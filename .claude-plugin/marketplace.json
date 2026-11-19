@@ -1,0 +1,14 @@
+{
+    "name":  "orca-workflow-local",
+    "owner":  {
+                  "name":  "vininemer"
+              },
+    "plugins":  [
+                    {
+                        "name":  "orca-workflow",
+                        "source":  "./",
+                        "description":  "Guide a repository request through Orchestra Auto in the active Orca conversation."
+                    }
+                ],
+    "description":  "Conversation workflows for development in Orca."
+}
