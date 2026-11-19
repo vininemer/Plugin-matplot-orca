@@ -377,6 +377,11 @@ else: sys.exit("unexpected gh arguments")""")
             "agent": "claude", "dispatch": "integration-review", "result": "approve",
             "standards": "Conforms.", "spec": "All criteria covered."}))
         final = (*args, "--dispatch", "integration-review", "--agent", "claude", "--review-file", review_file)
+        for field in ("command", "evidence"):
+            signed_check = dict(suite, **{field: "https://ci.test/suite?sig=fixture-value"})
+            self.checks.write_text(json.dumps(dict(report, integration=[signed_check])))
+            self.assertIn("query-free", self.call("evidence", *final, ok=False))
+        self.checks.write_text(json.dumps(report))
         pr["body"] += "\n" + self.call("evidence", *final)["markdown"]
         self.assertIn(first, pr["body"])
         self.assertIn("complete suite log", pr["body"])
@@ -408,6 +413,10 @@ else: sys.exit("unexpected gh arguments")""")
                  ("spec", "See trace ghp_syntheticExampleToken1234567890"),
                  ("command", "curl --user demo:private https://ci.test"),
                  ("evidence", "AWS_SECRET_ACCESS_KEY=example-private")]
+        signed = "https://ci.test/run?sv=2021-08-06&sig=fixture-value"
+        cases.extend((field, signed) for field in ("command", "evidence", "standards", "spec"))
+        cases.extend([("evidence", "https://ci.test/run?opaque-reference"),
+                      ("spec", "[Build logs](reports/12?sig=fixture-value)")])
         for field, unsafe in cases:
             with self.subTest(field=field):
                 check = dict(report["checks"][0])
@@ -418,13 +427,15 @@ else: sys.exit("unexpected gh arguments")""")
                 error = self.call(*args, ok=False)
                 self.assertIn("sanitized", error)
                 self.assertNotIn(unsafe, error)
+                if unsafe == signed:
+                    self.assertIn("query-free", error)
 
     def test_only_an_open_pr_with_matching_review_and_evidence_can_be_delivered(self):
         pr = self.review_fixture()
         review_file = self.directory / "review.json"
         review = {"base": pr["baseRefOid"], "head": pr["headRefOid"], "agent": "claude",
                   "dispatch": "review-dispatch", "result": "approve",
-                  "standards": "Basic coverage conforms to the documented rules.", "spec": "All criteria met."}
+                  "standards": "Basic coverage conforms. See https://ci.test/build/12#report.", "spec": "All criteria met."}
         review_file.write_text(json.dumps(review))
         args = ("--repo", "acme/tasks", "--pr", 12, "--review-file", review_file,
                 "--ticket", 7, "--tests-file", self.checks, "--agent", "claude", "--dispatch", "review-dispatch")

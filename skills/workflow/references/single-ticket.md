@@ -27,7 +27,7 @@ For an existing bound Run, include `--run <orca-run-id>`. The helper supplies th
 
 ## Hand off the actual PR change
 
-1. Verify the implementer's settled output, PR and test log through the worker transcript/CI. Fetch the PR head and base objects into the coordinator's target Git repository. Store the verified ticket results in a UTF-8 JSON file. Use a reproducible command with credential arguments omitted, a short result and a durable log reference. Inspect private logs locally. Keep tokens, headers, signed links and raw transcripts out of the evidence and reviewer brief. Its `head` is the full tested PR head and every check identifies its ticket, command, result and evidence. For example:
+1. Verify the implementer's settled output, PR and test log through the worker transcript/CI. Fetch the PR head and base objects into the coordinator's target Git repository. Store the verified ticket results in a UTF-8 JSON file. Use a reproducible command with credential arguments omitted, a short result and a stable, query-free CI or log reference. Inspect private logs locally. Keep tokens, headers, signed links and raw transcripts out of the evidence and reviewer brief. Its `head` is the full tested PR head and every check identifies its ticket, command, result and evidence. For example:
 
    ```json
    {"head":"<full-tested-commit>","checks":[{"ticket":7,"command":"python -m unittest","result":"pass","evidence":"14 tests passed; <run log reference>"}]}

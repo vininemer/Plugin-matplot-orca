@@ -123,6 +123,8 @@ CREDENTIAL = re.compile(
 
 
 def public_summary(text):
+    if re.search(r"""(?:/|\]\()[^\s<>"']*\?|\?[\w.%-]+=""", text):
+        raise ValueError("Supply a sanitized, stable, query-free CI reference")
     if CREDENTIAL.search(text):
         raise ValueError("Supply a sanitized command, result, review summary or evidence reference")
     return text
