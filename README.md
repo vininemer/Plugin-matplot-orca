@@ -32,6 +32,8 @@ In the target repository’s Orca conversation, select the **workflow** skill fr
 
 ## Build an existing ticket
 
+Configure the selected CLI profiles and point `ORCA_WORKFLOW_ROUTING` at their verified policy before dispatch. The [LiteLLM routing guide](skills/workflow/references/routing.md) includes working gateway and CLI configuration examples, read-only preflight commands and the evidence needed to verify a real worker request.
+
 In the same workflow skill, ask "Build #7 and leave the tested and reviewed PR open." The default implementer is Codex and the default reviewer is Claude Code. Set `ORCA_WORKFLOW_IMPLEMENT_CLI` and `ORCA_WORKFLOW_REVIEW_CLI` in the conversation environment to change the defaults (`codex` or `claude`). For a single run you can say "Have Claude Code implement #7 and have Codex review it." The conversation returns the PR with the ticket checks and the review of its exact change. You decide when to merge.
 
 Worker supervision uses the local Orca CLI and Orchestra Auto's POSIX tools. On Windows, use WSL for the upstream ledger/preflight scripts with a verified binding to the existing Orca conversation. The workflow includes path and binding checks in the [single-ticket instructions](skills/workflow/references/single-ticket.md).

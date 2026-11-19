@@ -55,7 +55,31 @@ print(json.dumps({"number": n, "url": f"https://github.com/acme/tasks/issues/{n}
         self.assertIn("open PR", result["endpoint"])
 
 
+    def configure_routes(self):
+        self.policy = self.directory / "routing.json"
+        self.gateway = self.directory / "gateway.json"
+        examples = ROOT / "skills/workflow/references"
+        self.gateway.write_bytes((examples / "gateway.example.json").read_bytes())
+        self.routes = json.loads((examples / "routing.example.json").read_text())
+        for agent, binding in self.routes.items():
+            binding.update(worker_host_verified=True, gateway_url="https://proxy.test",
+                           gateway_config=self.gateway.name,
+                           cli_config="config.toml" if agent == "codex" else "settings.json")
+        (self.directory / "config.toml").write_text(
+            'model_provider = "gateway"\n[model_providers.gateway]\nname = "LiteLLM"\n'
+            'base_url = "https://proxy.test/v1"\nwire_api = "responses"\nsupports_websockets = false\n'
+            'requires_openai_auth = true\nenv_http_headers = {"x-litellm-api-key"="GATEWAY_KEY"}\n')
+        (self.directory / "settings.json").write_text(json.dumps({"env": {
+            "ANTHROPIC_BASE_URL": "https://proxy.test",
+            "ANTHROPIC_CUSTOM_HEADERS": "x-litellm-api-key: Bearer fixture-secret"}}))
+        self.policy.write_text(json.dumps(self.routes))
+        self.env = {k: v for k, v in self.env.items()
+                    if not k.startswith(("ANTHROPIC_", "CLAUDE_CODE_USE_", "OPENAI_", "CODEX_API_"))}
+        self.env["GATEWAY_KEY"] = "test-virtual-key"
+        self.env["ORCA_WORKFLOW_ROUTING"] = str(self.policy)
+
     def test_step_defaults_and_overrides_reach_the_isolated_orca_worker(self):
+        self.configure_routes()
         orca = self.fake_command("orca", """import json, sys
 from pathlib import Path
 args = sys.argv[1:]
@@ -65,7 +89,7 @@ assert option("--worktree") == "new-top-level" and option("--setup") == "run"
 assert option("--repo") == "path:fixture" and option("--retry-request") == "request-id"
 assert option("--name") == "ticket-7" and option("--base-branch") == "f" * 40
 assert Path(option("--spec-file")).read_text(encoding="utf-8") == "Assigned scope\\nChecks"
-assert option("--model") == "fixture-route" and option("--run") == "orca-run"
+assert option("--model") == option("--agent") + "-auto" and option("--run") == "orca-run"
 print(json.dumps({"ok": True, "result": {"dispatchId": "test-dispatch",
       "agent": option("--agent"), "turnStart": "observed"}}))""")
         self.env.update(ORCA_CLI_COMMAND=orca, ORCA_WORKFLOW_IMPLEMENT_CLI="claude",
@@ -78,10 +102,108 @@ print(json.dumps({"ok": True, "result": {"dispatchId": "test-dispatch",
             with self.subTest(step=step, override=override):
                 receipt = self.call("dispatch", "--step", step, "--spec-file", brief, "--name",
                                     "ticket-7", "--request", "request-id", "--base", "f" * 40,
-                                    "--repo", "path:fixture", "--model", "fixture-route",
+                                    "--repo", "path:fixture",
                                     "--run", "orca-run", *override)
                 self.assertEqual(receipt["result"]["agent"], expected)
 
+
+    def test_missing_routing_policy_stops_before_any_worker_is_started(self):
+        self.env["ORCA_WORKFLOW_ROUTING"] = ""
+        self.env["ORCA_CLI_COMMAND"] = self.fake_command("orca", "raise SystemExit('worker started')")
+        brief = self.directory / "brief.md"
+        brief.write_text("Ticket scope")
+        args = ("dispatch", "--step", "implement", "--spec-file", brief, "--name", "impl",
+                "--request", "id", "--base", "main", "--repo", "path:fixture")
+        self.assertIn("ORCA_WORKFLOW_ROUTING", self.call(*args, ok=False))
+
+    def test_router_must_only_reach_enabled_compatible_models(self):
+        self.configure_routes()
+        args = ("route-check", "--agent", "codex")
+        checked = self.call(*args)
+        self.assertEqual(checked["enabled_models"], ["chatgpt/gpt-6-astra", "chatgpt/gpt-6-luna"])
+        original = self.gateway.read_text()
+        for defect in ["alternate", "paid classifier", "bad default", "global fallback", "stale tier",
+                       "unknown provider", "wrong protocol", "unlisted model", "opaque config"]:
+            with self.subTest(defect=defect):
+                deployed = json.loads(original)
+                entries = deployed["model_list"]
+                params = entries[0]["litellm_params"]
+                if defect == "alternate":
+                    entries.append({"model_name": "gpt-6-luna", "litellm_params": {"model": "openai/gpt-6-luna"}})
+                elif defect == "paid classifier":
+                    params["complexity_router_config"]["classifier_type"] = "llm"
+                elif defect == "bad default":
+                    params["complexity_router_default_model"] = "claude-haiku-4-5"
+                elif defect == "global fallback":
+                    deployed["router_settings"] = {"fallbacks": [{"codex-auto": ["claude-auto"]}]}
+                elif defect == "stale tier":
+                    params["complexity_router_config"]["tiers"]["COMPLEX"] = "missing"
+                elif defect == "unknown provider":
+                    entries[1]["litellm_params"]["model"] = "openai/gpt-6-luna"
+                elif defect == "wrong protocol":
+                    entries[1]["model_info"]["mode"] = "chat"
+                elif defect == "unlisted model":
+                    entries[1]["litellm_params"]["model"] = "chatgpt/other"
+                else:
+                    deployed["include"] = ["additional-routes.yaml"]
+                self.gateway.write_text(json.dumps(deployed))
+                self.call(*args, ok=False)
+
+    def test_preflight_reads_the_active_cli_profile_and_blocks_conflicts(self):
+        self.configure_routes()
+        for agent, file, edits in [
+            ("codex", "config.toml", [
+                ("https://proxy.test", "https://unrelated.test"),
+                ('model_provider = "gateway"', 'model_provider = "other"'),
+                ("requires_openai_auth = true", 'requires_openai_auth = true\nenv_key = "OTHER_KEY"'),
+                ("supports_websockets = false", "supports_websockets = true")]),
+            ("claude", "settings.json", [
+                ("https://proxy.test", "https://unrelated.test"),
+                ('{"env":', '{"apiKeyHelper":"helper","env":'),
+                ('{"env":', '{"availableModels":["sonnet"],"env":'),
+                ('"ANTHROPIC_BASE_URL":', '"ANTHROPIC_API_KEY":"secret","ANTHROPIC_BASE_URL":'),
+                ("x-litellm-api-key:", "authorization:")])]:
+            args = ("route-check", "--agent", agent)
+            file = self.directory / file
+            original = file.read_text()
+            self.call(*args)
+            for old, new in edits:
+                with self.subTest(agent=agent, replacement=new):
+                    file.write_text(original.replace(old, new))
+                    output = self.call(*args, ok=False)
+                    self.assertNotIn("fixture-secret", output)
+            file.write_text(original)
+
+    def test_api_route_names_the_models_and_needs_per_dispatch_opt_in(self):
+        self.configure_routes()
+        route = self.routes["claude"]
+        route["billing"] = "api"
+        self.policy.write_text(json.dumps(self.routes))
+        (self.directory / "settings.json").write_text(json.dumps({"env": {
+            "ANTHROPIC_BASE_URL": route["gateway_url"], "ANTHROPIC_AUTH_TOKEN": "scoped-gateway-key"}}))
+        args = ("route-check", "--agent", "claude")
+        self.assertIn("--allow-api-model", self.call(*args, ok=False))
+        partial = ("--allow-api-model", route["enabled_models"][0])
+        self.assertIn("--allow-api-model", self.call(*args, *partial, ok=False))
+        consent = (*partial, "--allow-api-model", route["enabled_models"][1])
+        self.assertEqual(self.call(*args, *consent)["billing"], "api")
+        self.env["ORCA_CLI_COMMAND"] = self.fake_command("orca", "raise SystemExit('worker started')")
+        brief = self.directory / "brief.md"
+        brief.write_text("Scope")
+        launch = ("dispatch", "--step", "review", "--spec-file", brief, "--name", "review",
+                  "--request", "review", "--base", "main", "--repo", "path:fixture")
+        self.assertIn("--allow-api-model", self.call(*launch, ok=False))
+        self.assertIn("verified alias", self.call(*launch, *consent, "--model", "other", ok=False))
+
+    def test_existing_gateway_can_keep_logging_settings_and_unrelated_models(self):
+        self.configure_routes()
+        deployed = json.loads(self.gateway.read_text())
+        deployed["general_settings"] = {"master_key": "os.environ/MASTER", "disable_spend_logs": False}
+        deployed["litellm_settings"] = {"drop_params": True}
+        deployed["router_settings"] = {"num_retries": 1}
+        deployed["model_list"].append({"model_name": "unrelated-*", "litellm_params": {"model": "openai/*"}})
+        self.gateway.write_text(json.dumps(deployed))
+        self.assertEqual(self.call("route-check", "--agent", "codex")["alias"], "codex-auto")
 
     def git(self, *args):
         return subprocess.check_output(["git", *args], cwd=self.directory, text=True).strip()

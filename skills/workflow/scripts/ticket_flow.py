@@ -10,6 +10,7 @@ import subprocess
 import sys
 import uuid
 
+from routing import route
 from spec_flow import append, orchestra_flow, read_plan
 
 
@@ -64,6 +65,7 @@ def assigned_agent(step, override):
 
 def dispatch(args):
     agent = assigned_agent(args.step, args.agent)
+    selected = route(args, agent)
     if not args.spec_file.read_text(encoding="utf-8-sig").strip():
         raise ValueError("The worker brief is empty")
     argv = ["orchestration", "worker-start", "--spec-file", args.spec_file.resolve(),
@@ -72,8 +74,7 @@ def dispatch(args):
             "--retry-request", args.request, "--json"]
     if args.run:
         argv.extend(["--run", args.run])
-    if args.model:
-        argv.extend(["--model", args.model])
+    argv.extend(["--model", selected["alias"]])
     return json.loads(command(os.environ.get("ORCA_CLI_COMMAND", "orca"), *argv))
 
 
@@ -174,6 +175,12 @@ def main():
         worker.add_argument("--" + flag, required=True)
     worker.add_argument("--run")
     worker.add_argument("--model")
+    preflight = commands.add_parser("route-check")
+    preflight.add_argument("--agent", required=True, choices=["codex", "claude"])
+    preflight.set_defaults(function=lambda args: route(args, args.agent))
+    for target in (preflight, worker):
+        target.add_argument("--routing-file", type=Path)
+        target.add_argument("--allow-api-model", action="append", default=[], metavar="PROVIDER/MODEL")
     worker.set_defaults(function=dispatch)
     review = commands.add_parser("review-brief")
     review.add_argument("--repo", type=repository, required=True)

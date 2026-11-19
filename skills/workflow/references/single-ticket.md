@@ -11,6 +11,8 @@ Use the current conversation as Orchestra Auto's coordinator. The endpoint is on
 
 ## Dispatch the selected implementer
 
+Before any worker launch, follow [worker profile and routing preflight](routing.md) for each assigned CLI. Use the same routing policy for review and follow-up workers. For the first live check start its clock before setup and capture the routing records described there.
+
 Read per-step defaults from `ORCA_WORKFLOW_IMPLEMENT_CLI` and `ORCA_WORKFLOW_REVIEW_CLI` in the conversation's execution environment. The built-ins are `codex` for implementation and `claude` for review. Apply a developer's per-run or per-ticket assignment using `--agent` for that dispatch. Both values work for either step. Keep the resolved reviewer and dispatch ID for the final comparison.
 
 Write the upstream worker spec with its required behavior rules and preflight elements. Give the implementer the ticket and parent scope, allowed files, base ref, expected repository checks and open-PR endpoint. Use the installed Matt Pocock `engineering/implement` and its `tdd` dependency at the agreed seam. Specify the independent reviewer handoff for code-review. The worker edits only its assigned worktree, runs the checks, commits, pushes, and creates or updates this ticket's single PR with a body file. Ask it to return the PR, full tested commit, exact commands, results/log references and a clean-worktree reading.
@@ -21,7 +23,7 @@ After upstream preflight passes and the ledger intent is written, dispatch with:
 python <helper> dispatch --step implement --spec-file <validated-brief> --repo <Orca-repo-selector> --base <verified-base-ref> --name <unique-name> --request <ledger-request-id>
 ```
 
-For an existing bound Run, include `--run <orca-run-id>`. Supply the run's selected route alias using `--model` when configured. Save the raw receipt as the ledger result for that intent. Inspect worker identity, worktree and branch against the assignment using the receipt and `orca orchestration worker-show --dispatch <id> --json`. Prove start with `turnStart: observed` or the upstream attempt evidence. If the launch or result is uncertain, reconcile the original request before retrying. Wait for native messages. Handle `ask`, `reply`, `worker_done` and follow-ups through the version-matched orchestration guide.
+For an existing bound Run, include `--run <orca-run-id>`. The helper supplies the selected CLI’s verified Auto Router alias. Include the per-model billing flags only for a separately approved API dispatch. Save the raw receipt as the ledger result for that intent. Inspect worker identity, worktree and branch against the assignment using the receipt and `orca orchestration worker-show --dispatch <id> --json`. Prove start with `turnStart: observed` or the upstream attempt evidence. If the launch or result is uncertain, reconcile the original request before retrying. Wait for native messages. Handle `ask`, `reply`, `worker_done` and follow-ups through the version-matched orchestration guide.
 
 ## Hand off the actual PR change
 
