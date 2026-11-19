@@ -6,11 +6,10 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import re
-import shutil
-import subprocess
 import sys
 import uuid
+
+from tracker import issue, repository
 
 
 def installed_root(variable):
@@ -91,24 +90,14 @@ def digest(text):
 
 
 def finish(run_id, repo, number, body_file):
-    if not re.fullmatch(r"[\w.-]+/[\w.-]+", repo, re.ASCII) or number < 1:
-        raise ValueError("Expected a GitHub owner/repository and positive issue number.")
     expected_body = body_file.read_text(encoding="utf-8-sig").strip()
     if not expected_body:
         raise ValueError("The agreed spec is empty.")
-    gh = shutil.which("gh")
-    if not gh:
-        raise ValueError("Install the GitHub CLI to verify the published spec.")
-    result = subprocess.run([gh, "issue", "view", str(number), "--repo", repo, "--json", "url,body"],
-                            capture_output=True, text=True, encoding="utf-8")
-    if result.returncode:
-        raise ValueError(result.stderr.strip() or "GitHub could not read the published issue.")
-    issue = json.loads(result.stdout)
-    url = f"https://github.com/{repo}/issues/{number}"
-    if issue["url"].lower() != url.lower() or issue["body"].replace("\r\n", "\n").strip() != expected_body:
+    published = issue(repo, number)
+    if published["body"].replace("\r\n", "\n").strip() != expected_body:
         raise ValueError("The published issue does not match the agreed spec in the configured tracker.")
-    plan = accept(run_id, "to-spec", issue["url"], digest(expected_body))
-    return {"state": plan["state"], "issue": issue["url"]}
+    plan = accept(run_id, "to-spec", published["url"], digest(expected_body))
+    return {"state": plan["state"], "issue": published["url"]}
 
 
 def main():
@@ -120,7 +109,7 @@ def main():
     agree.add_argument("--agreement", required=True)
     published = commands.add_parser("finish")
     published.add_argument("--run", required=True, type=uuid.UUID)
-    published.add_argument("--repo", required=True)
+    published.add_argument("--repo", type=repository, required=True)
     published.add_argument("--issue", required=True, type=int)
     published.add_argument("--body-file", required=True, type=Path)
     args = parser.parse_args()

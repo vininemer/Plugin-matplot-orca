@@ -47,15 +47,15 @@ class SpecConversation(unittest.TestCase):
         body.write_text("## Solution\n\nFilter by overdue tasks.\n", encoding="utf-8")
         url = "https://github.com/acme/tasks/issues/42"
         snapshot = directory / "published.json"
-        snapshot.write_text(json.dumps({"url": url, "body": body.read_text(encoding="utf-8")}),
+        snapshot.write_text(json.dumps({"url": url, "body": body.read_text(encoding="utf-8"), "labels": []}),
                             encoding="utf-8")
         # A fake external gh accepts only the read-back operation.
         if os.name == "nt":
             gh = directory / "gh.cmd"
-            gh.write_text('@if not "%1 %2"=="issue view" exit /b 3\n@type "%FAKE_ISSUE%"\n')
+            gh.write_text('@if "%1"=="api" (echo [[]] & exit /b 0)\n@if not "%1 %2"=="issue view" exit /b 3\n@type "%FAKE_ISSUE%"\n')
         else:
             gh = directory / "gh"
-            gh.write_text('#!/bin/sh\n[ "$1 $2" = "issue view" ] || exit 3\ncat "$FAKE_ISSUE"\n')
+            gh.write_text('#!/bin/sh\nif [ "$1" = api ]; then echo "[[]]"; exit 0; fi\n[ "$1 $2" = "issue view" ] || exit 3\ncat "$FAKE_ISSUE"\n')
             gh.chmod(0o755)
         self.env.update(PATH=str(directory) + os.pathsep + self.env["PATH"], FAKE_ISSUE=str(snapshot))
         result = self.call("finish", "--run", run_id, "--repo", "acme/tasks",

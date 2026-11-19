@@ -7,7 +7,7 @@
         "complexity_router_default_model": "gpt-6-luna",
         "complexity_router_config": {
           "classifier_type": "heuristic",
-          "classification_mode": "user_turn",
+          "classification_mode": "every_request",
           "context_compaction": false,
           "tiers": {
             "SIMPLE": "gpt-6-luna",
@@ -43,7 +43,7 @@
         "complexity_router_default_model": "claude-haiku-4-5",
         "complexity_router_config": {
           "classifier_type": "heuristic",
-          "classification_mode": "user_turn",
+          "classification_mode": "every_request",
           "context_compaction": false,
           "tiers": {
             "SIMPLE": "claude-haiku-4-5",

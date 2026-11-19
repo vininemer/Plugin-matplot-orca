@@ -42,12 +42,15 @@ class TicketConversation(unittest.TestCase):
     @unittest.skipUnless(os.environ.get("ORCHESTRA_AUTO_ROOT"), "Set ORCHESTRA_AUTO_ROOT")
     def test_actionable_ticket_starts_at_implementation_with_the_agreed_scope(self):
         self.fake_command("gh", """import json, sys
+if sys.argv[1:3] == ["api", "--paginate"]:
+    print("[[]]")
+    sys.exit(0)
 assert sys.argv[1:3] == ["issue", "view"]
 assert sys.argv[4:6] == ["--repo", "acme/tasks"]
 n = int(sys.argv[3])
 print(json.dumps({"number": n, "url": f"https://github.com/acme/tasks/issues/{n}",
                   "title": f"Issue {n}", "body": {7: "Ticket acceptance", 2: "Agreed scope"}[n],
-                  "state": "OPEN"}))""")
+                  "state": "OPEN", "labels": []}))""")
         result = self.call("begin", "--repo", "acme/tasks", "--issue", 7, "--spec", 2)
         self.assertEqual([n["node"] for n in result["ready"]], ["implement"])
         self.assertEqual(result["ticket"]["body"], "Ticket acceptance")
@@ -100,21 +103,46 @@ assert option("--name") == "ticket-7" and option("--base-branch") == "f" * 40
 assert Path(option("--spec-file")).read_text(encoding="utf-8") == "Assigned scope\\nChecks"
 assert option("--model") == option("--agent") + "-auto" and option("--run") == "orca-run"
 print(json.dumps({"ok": True, "result": {"dispatchId": "test-dispatch",
-      "agent": option("--agent"), "turnStart": "observed"}}))""")
+      "agent": option("--agent"), "turnStart": "observed",
+      "diagnostics": "Authorization: Bearer receipt-secret"}}))""")
         self.env.update(ORCA_CLI_COMMAND=orca, ORCA_WORKFLOW_IMPLEMENT_CLI="claude",
-                        ORCA_WORKFLOW_REVIEW_CLI="codex")
+                        ORCA_WORKFLOW_REVIEW_CLI="codex", ORCA_WORKFLOW_INTERVIEW_CLI="codex",
+                        ORCA_WORKFLOW_SPEC_CLI="claude", ORCA_WORKFLOW_TICKETS_CLI="codex")
         brief = self.directory / "worker brief.md"
         brief.write_text("Assigned scope\nChecks", encoding="utf-8")
         for step, override, expected in [("implement", [], "claude"), ("review", [], "codex"),
                                          ("implement", ["--agent", "codex"], "codex"),
-                                         ("review", ["--agent", "claude"], "claude")]:
+                                         ("review", ["--agent", "claude"], "claude"),
+                                         ("interview", [], "codex"), ("spec", [], "claude"),
+                                         ("tickets", [], "codex"), ("spec", ["--agent", "codex"], "codex")]:
             with self.subTest(step=step, override=override):
                 receipt = self.call("dispatch", "--step", step, "--spec-file", brief, "--name",
                                     "ticket-7", "--request", "request-id", "--base", "f" * 40,
                                     "--repo", "path:fixture",
                                     "--run", "orca-run", *override)
                 self.assertEqual(receipt["result"]["agent"], expected)
+                self.assertEqual(receipt["result"]["dispatchId"], "test-dispatch")
+                self.assertNotIn("receipt-secret", json.dumps(receipt))
 
+
+    def test_scope_stages_default_to_the_original_conversation(self):
+        for step in ("interview", "spec", "tickets"):
+            self.env.pop(f"ORCA_WORKFLOW_{step.upper()}_CLI", None)
+            self.assertEqual(self.call("assignment", "--step", step)["agent"], "conversation")
+            self.env[f"ORCA_WORKFLOW_{step.upper()}_CLI"] = "claude"
+            self.assertEqual(self.call("assignment", "--step", step)["agent"], "claude")
+            self.assertEqual(self.call("assignment", "--step", step, "--agent", "conversation")["agent"],
+                             "conversation")
+
+    def test_failed_child_commands_report_only_a_safe_diagnostic(self):
+        self.fake_command("gh", """import sys
+print("Authorization: Bearer stdout-secret")
+print("x-api-key: stderr-secret", file=sys.stderr)
+sys.exit(17)""")
+        error = self.call("begin", "--repo", "acme/tasks", "--issue", 7, ok=False)
+        self.assertIn("gh", error)
+        self.assertIn("17", error)
+        self.assertNotIn("secret", error)
 
     def test_missing_routing_policy_stops_before_any_worker_is_started(self):
         self.env["ORCA_WORKFLOW_ROUTING"] = ""
@@ -124,6 +152,18 @@ print(json.dumps({"ok": True, "result": {"dispatchId": "test-dispatch",
         args = ("dispatch", "--step", "implement", "--spec-file", brief, "--name", "impl",
                 "--request", "id", "--base", "main", "--repo", "path:fixture")
         self.assertIn("ORCA_WORKFLOW_ROUTING", self.call(*args, ok=False))
+
+    def test_auto_router_classifies_every_worker_request(self):
+        self.configure_routes()
+        deployed = json.loads(self.gateway.read_text())
+        classifier = deployed["model_list"][0]["litellm_params"]["complexity_router_config"]
+        for mode in ("every_request", None, "user_turn"):
+            if mode is None:
+                del classifier["classification_mode"]
+            else:
+                classifier["classification_mode"] = mode
+            self.gateway.write_text(json.dumps(deployed))
+            self.call("route-check", "--agent", "codex", ok=mode != "user_turn")
 
     def test_router_must_only_reach_enabled_compatible_models(self):
         self.configure_routes()
@@ -183,6 +223,19 @@ print(json.dumps({"ok": True, "result": {"dispatchId": "test-dispatch",
                     self.assertNotIn("fixture-secret", output)
             file.write_text(original)
 
+    def test_claude_subscription_requires_the_gateway_root(self):
+        self.configure_routes()
+        profile = self.directory / "settings.json"
+        original = json.loads(profile.read_text())
+        for suffix in ("/anthropic", "/%61nthropic", "/proxy/anthropic/"):
+            with self.subTest(suffix=suffix):
+                url = "https://proxy.test" + suffix
+                original["env"]["ANTHROPIC_BASE_URL"] = url
+                profile.write_text(json.dumps(original))
+                self.routes["claude"]["gateway_url"] = url
+                self.policy.write_text(json.dumps(self.routes))
+                self.assertIn("gateway root", self.call("route-check", "--agent", "claude", ok=False))
+
     def test_api_route_names_the_models_and_needs_per_dispatch_opt_in(self):
         self.configure_routes()
         route = self.routes["claude"]
@@ -236,6 +289,11 @@ print(json.dumps({"ok": True, "result": {"dispatchId": "test-dispatch",
 from pathlib import Path
 if sys.argv[1:4] == ["pr", "view", "12"]:
     print(Path("pr.json").read_text(encoding="utf-8"))
+elif sys.argv[1:3] == ["api", "--paginate"] and sys.argv[-1].endswith("/comments"):
+    assert sys.argv[3] == "--slurp"
+    n = sys.argv[-1].split("/")[-2]
+    print(json.dumps([[], [{"html_url": f"https://github.com/acme/tasks/issues/{n}#issuecomment-99",
+                            "user": {"login": "owner"}, "body": f"Revised scope for issue {n}."}]]))
 elif sys.argv[1:3] == ["api", "--paginate"]:
     assert sys.argv[-5:] == ["repos/acme/tasks/pulls", "-f", "state=open", "-f",
                              "head=acme:feature/integration"]
@@ -244,7 +302,8 @@ elif sys.argv[1:3] == ["api", "--paginate"]:
                         "base": {"sha": p["baseRefOid"]}, "draft": p["isDraft"]} for p in matches]]))
 elif sys.argv[1:3] == ["issue", "view"]:
     n = int(sys.argv[3])
-    print(json.dumps({"url": f"https://github.com/acme/tasks/issues/{n}",
+    assert "labels" in sys.argv[-1].split(",")
+    print(json.dumps({"labels": [{"name": "ready-for-agent"}], "url": f"https://github.com/acme/tasks/issues/{n}",
                       "body": {2: "Agreed feature", 7: "Ticket checks", 8: "Dependent ticket"}[n],
                       "number": n, "title": f"Issue {n}", "state": "OPEN"}))
 else: sys.exit("unexpected gh arguments")""")
@@ -281,7 +340,8 @@ else: sys.exit("unexpected gh arguments")""")
         packet = self.call(*args)
         self.assertEqual(packet["head"], pr["headRefOid"])
         for evidence in [pr["baseRefOid"], pr["headRefOid"], "feature.txt", "Agreed feature",
-                         "Ticket checks", "make test", "7 tests passed"]:
+                         "Ticket checks", "make test", "7 tests passed", "ready-for-agent",
+                         "Revised scope for issue 2.", "Revised scope for issue 7.", "#issuecomment-99"]:
             self.assertIn(evidence, packet["brief"])
         stale = json.loads(self.checks.read_text())
         self.assertIn("ticket coverage", self.call(*args, "--ticket", 8, ok=False))
@@ -333,12 +393,38 @@ else: sys.exit("unexpected gh arguments")""")
         self.pr_path.write_text(json.dumps(pr))
         self.call("verify-pr", *final, ok=False)
 
+    def test_pr_evidence_requires_sanitized_commands_logs_and_review_summaries(self):
+        pr = self.review_fixture()
+        review_file = self.directory / "review.json"
+        review = {"base": pr["baseRefOid"], "head": pr["headRefOid"], "agent": "claude",
+                  "dispatch": "review-id", "result": "approve", "standards": "Conforms.", "spec": "Covered."}
+        report = json.loads(self.checks.read_text())
+        args = ("evidence", "--repo", "acme/tasks", "--pr", 12, "--review-file", review_file,
+                "--ticket", 7, "--tests-file", self.checks, "--agent", "claude", "--dispatch", "review-id")
+        cases = [("command", "curl -H 'Authorization: Bearer shared-secret'"),
+                 ("evidence", "X-LiteLLM-API-Key: shared-secret"),
+                 ("standards", "run passed with OPENAI_API_KEY=shared-secret"),
+                 ("spec", "https://ci.test/result?token=shared-secret"),
+                 ("spec", "See trace ghp_syntheticExampleToken1234567890"),
+                 ("command", "curl --user demo:private https://ci.test"),
+                 ("evidence", "AWS_SECRET_ACCESS_KEY=example-private")]
+        for field, unsafe in cases:
+            with self.subTest(field=field):
+                check = dict(report["checks"][0])
+                summary = dict(review)
+                (check if field in check else summary)[field] = unsafe
+                self.checks.write_text(json.dumps(dict(report, checks=[check])))
+                review_file.write_text(json.dumps(summary))
+                error = self.call(*args, ok=False)
+                self.assertIn("sanitized", error)
+                self.assertNotIn(unsafe, error)
+
     def test_only_an_open_pr_with_matching_review_and_evidence_can_be_delivered(self):
         pr = self.review_fixture()
         review_file = self.directory / "review.json"
         review = {"base": pr["baseRefOid"], "head": pr["headRefOid"], "agent": "claude",
                   "dispatch": "review-dispatch", "result": "approve",
-                  "standards": "Conforms to the documented rules.", "spec": "All criteria met."}
+                  "standards": "Basic coverage conforms to the documented rules.", "spec": "All criteria met."}
         review_file.write_text(json.dumps(review))
         args = ("--repo", "acme/tasks", "--pr", 12, "--review-file", review_file,
                 "--ticket", 7, "--tests-file", self.checks, "--agent", "claude", "--dispatch", "review-dispatch")
@@ -349,6 +435,10 @@ else: sys.exit("unexpected gh arguments")""")
         self.assertIn("PR body", self.call("verify-pr", *args, ok=False))
         pr["body"] += "\r\n" + evidence.replace("\n", "\r\n")
         self.pr_path.write_text(json.dumps(pr))
+        open_prs = self.directory / "open.json"
+        open_prs.write_text(json.dumps([pr, dict(pr, url="https://github.com/acme/tasks/pull/13")]))
+        self.assertIn("one open", self.call("verify-pr", *args, ok=False))
+        open_prs.write_text(json.dumps([pr]))
         self.assertEqual(self.call("verify-pr", *args)["pull_request"], pr["url"])
         for key, wrong in [("head", "9" * 40), ("base", "8" * 40), ("agent", "codex"),
                            ("dispatch", "other"), ("result", "request-changes")]:

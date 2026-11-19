@@ -10,3 +10,5 @@ that the glossary does not cover, flag the gap for `domain-modeling`.
 
 If a proposal conflicts with a recorded decision, cite the relevant ADR and
 explain why the decision is worth revisiting.
+
+Vocabulary gaps for the next domain-modeling pass include the Orchestra Auto **flow ID** for its workflow ledger and the **Orca Run ID** for worker messaging and dispatch. A ticket is **integrated** when its tested commit is on the integration branch. **Closed** describes the issue state read back from GitHub.

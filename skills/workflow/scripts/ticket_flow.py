@@ -6,40 +6,12 @@ import json
 import os
 from pathlib import Path
 import re
-import shutil
-import subprocess
 import sys
 import uuid
 
+from tracker import command, issue, repository
 from routing import route
 from spec_flow import append, orchestra_flow, read_plan
-
-
-def command(executable, *args):
-    binary = shutil.which(executable)
-    if not binary:
-        raise ValueError(f"Executable unavailable: {executable}")
-    result = subprocess.run([binary, *map(str, args)], capture_output=True, text=True, encoding="utf-8")
-    if result.returncode:
-        raise ValueError(result.stderr.strip() or result.stdout.strip() or f"{executable} failed")
-    return result.stdout
-
-
-def repository(value):
-    if not re.fullmatch(r"[\w.-]+/[\w.-]+", value, re.ASCII):
-        raise ValueError("Expected owner/repository")
-    return value
-
-
-def issue(repo, number):
-    if number < 1:
-        raise ValueError("Issue number must be positive")
-    result = json.loads(command("gh", "issue", "view", number, "--repo", repo,
-                                "--json", "number,title,body,state,url"))
-    expected = f"https://github.com/{repo}/issues/{number}"
-    if result["url"].lower() != expected.lower() or not result["body"].strip():
-        raise ValueError("Expected a scoped issue in the configured tracker")
-    return result
 
 
 def begin(args):
@@ -63,16 +35,38 @@ def begin(args):
             "ready": read_plan(flow, run_id)["ready"], **artifacts}
 
 
+STEP_DEFAULTS = {"interview": "conversation", "spec": "conversation", "tickets": "conversation",
+                 "implement": "codex", "review": "claude"}
+
+
 def assigned_agent(step, override):
-    default = {"implement": "codex", "review": "claude"}[step]
+    default = STEP_DEFAULTS[step]
     agent = override or os.environ.get(f"ORCA_WORKFLOW_{step.upper()}_CLI", default)
+    if agent == "conversation" and default == "conversation":
+        return agent
     if agent not in ("codex", "claude"):
         raise ValueError(f"Choose codex or claude for {step}")
     return agent
 
 
+def receipt_fields(receipt):
+    result = {}
+    for key, value in receipt.items():
+        if key in ("result", "run", "task", "worker", "dispatch") and isinstance(value, dict):
+            result[key] = receipt_fields(value)
+        elif key == "ok" and isinstance(value, bool):
+            result[key] = value
+        elif key in ("id", "runId", "taskId", "workerId", "dispatchId", "requestId", "agent",
+                     "model", "stage", "state", "turnStart") and isinstance(value, str):
+            if re.fullmatch(r"[A-Za-z0-9._/-]{1,160}", value) and not CREDENTIAL.search(value):
+                result[key] = value
+    return result
+
+
 def dispatch(args):
     agent = assigned_agent(args.step, args.agent)
+    if agent == "conversation":
+        raise ValueError("Run this step in the original conversation or assign a worker CLI")
     selected = route(args, agent)
     if not args.spec_file.read_text(encoding="utf-8-sig").strip():
         raise ValueError("The worker brief is empty")
@@ -83,7 +77,10 @@ def dispatch(args):
     if args.run:
         argv.extend(["--run", args.run])
     argv.extend(["--model", selected["alias"]])
-    return json.loads(command(os.environ.get("ORCA_CLI_COMMAND", "orca"), *argv))
+    receipt = json.loads(command(os.environ.get("ORCA_CLI_COMMAND", "orca"), *argv))
+    if not isinstance(receipt, dict) or receipt.get("ok") is False:
+        raise ValueError("Orca launch unconfirmed. Reconcile the ledger request before retrying")
+    return receipt_fields(receipt)
 
 
 def pr_snapshot(args):
@@ -112,6 +109,23 @@ def read_graph(path):
     except CycleError as error:
         raise ValueError("The approved ticket map contains a cycle") from error
     return graph
+
+
+CREDENTIAL = re.compile(
+    r"\b(?:authorization|proxy-authorization|cookie|set-cookie)\s*:"
+    r"|\bbearer\s+[A-Za-z0-9._~+/=-]{6,}"
+    r"|[\w.-]*(?:(?:api|access|private|gateway|secret)[-_]?key|token|password|secret|credential|signature)[\"']?\s*[=:]\s*\S"
+    r"|(?:--(?:proxy-)?user[= ]+|-u\s+)[^\s:]+:\S+"
+    r"|--(?:password|token|api-key|auth-token|client-secret)\s+\S"
+    r"|\b(?:sk-[\w-]{8,}|gh[pousr]_[\w]{12,}|github_pat_[\w]{12,}|AKIA[A-Z0-9]{16})"
+    r"|\beyJ[\w-]+\.[\w-]+\.[\w-]+|-----BEGIN [A-Z ]*PRIVATE KEY-----"
+    r"|https?://[^\s/]+@[^\s/]+", re.IGNORECASE)
+
+
+def public_summary(text):
+    if CREDENTIAL.search(text):
+        raise ValueError("Supply a sanitized command, result, review summary or evidence reference")
+    return text
 
 
 def passing_check(check):
@@ -185,7 +199,7 @@ def ticket_checks(args, head):
         if not isinstance(suite, list) or not suite or not all(passing_check(c) for c in suite):
             raise ValueError("Expected passing integration checks at the tested PR head")
         lines.extend(f"- Integration at {head} | {c['command']} | PASS | {c['evidence']}" for c in suite)
-    return tickets, lines
+    return tickets, [public_summary(line) for line in lines]
 
 
 def review_brief(args):
@@ -196,7 +210,10 @@ def review_brief(args):
     scope = []
     for number in numbers:
         item = issue(args.repo, number)
-        scope.extend([item["url"], item["title"], item["body"]])
+        scope.extend([item["url"], item["title"], item["body"],
+                      "Labels: " + ", ".join(label["name"] for label in item["labels"])])
+        for comment in item["comments"]:
+            scope.extend([f"Comment by {comment['author']} ({comment['url']})", comment["body"]])
     diff = f"{base}...{head}"
     changed = command("git", "diff", "--no-ext-diff", "--no-textconv", "--stat", diff, "--")
     if not changed.strip():
@@ -229,20 +246,20 @@ def delivery(args):
                           "", f"Approved by {agent} (Orca dispatch {args.dispatch})",
                           f"Reviewed change: {base}...{head}", f"Standards: {review['standards']}",
                           f"Spec: {review['spec']}"])
+    public_summary(markdown)
     if args.command == "evidence":
         return {"markdown": markdown}
     if markdown not in pr["body"].replace("\r\n", "\n"):
         raise ValueError("The PR body lacks the verified test and review evidence")
-    if args.map_file:
-        if pr["isDraft"]:
-            raise ValueError("Mark the integration draft ready for review before delivery")
-        selector = f"{pr['headRepositoryOwner']['login']}:{pr['headRefName']}"
-        pages = json.loads(command("gh", "api", "--paginate", "--slurp", "--method", "GET",
-                                   f"repos/{args.repo}/pulls", "-f", "state=open", "-f", f"head={selector}"))
-        matches = [item for page in pages for item in page]
-        if (len(matches) != 1 or matches[0]["html_url"] != pr["url"] or matches[0]["draft"]
-                or matches[0]["head"]["sha"] != head or matches[0]["base"]["sha"] != base):
-            raise ValueError("Expected one open, ready PR at the reviewed integration base and head")
+    if args.map_file and pr["isDraft"]:
+        raise ValueError("Mark the integration draft ready for review before delivery")
+    selector = f"{pr['headRepositoryOwner']['login']}:{pr['headRefName']}"
+    pages = json.loads(command("gh", "api", "--paginate", "--slurp", "--method", "GET",
+                               f"repos/{args.repo}/pulls", "-f", "state=open", "-f", f"head={selector}"))
+    matches = [item for page in pages for item in page]
+    if (len(matches) != 1 or matches[0]["html_url"] != pr["url"] or (args.map_file and matches[0]["draft"])
+            or matches[0]["head"]["sha"] != head or matches[0]["base"]["sha"] != base):
+        raise ValueError("Expected one open PR for the delivery branch at the reviewed base and head")
     return {"pull_request": pr["url"], "state": pr["state"], "head": head, "reviewer": agent}
 
 
@@ -270,8 +287,12 @@ def main():
     queue.add_argument("--tests-file", type=Path, required=True)
     queue.add_argument("--head", required=True)
     queue.set_defaults(function=frontier)
+    assignment = commands.add_parser("assignment")
+    assignment.add_argument("--step", choices=STEP_DEFAULTS, required=True)
+    assignment.add_argument("--agent", choices=["codex", "claude", "conversation"])
+    assignment.set_defaults(function=lambda args: {"step": args.step, "agent": assigned_agent(args.step, args.agent)})
     worker = commands.add_parser("dispatch")
-    worker.add_argument("--step", choices=["implement", "review"], required=True)
+    worker.add_argument("--step", choices=STEP_DEFAULTS, required=True)
     worker.add_argument("--agent", choices=["codex", "claude"])
     worker.add_argument("--spec-file", type=Path, required=True)
     for flag in ("repo", "base", "name", "request"):

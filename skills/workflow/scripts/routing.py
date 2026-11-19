@@ -59,8 +59,8 @@ def gateway_models(config, alias, agent, billing):
               "Unsupported classifier, escalation or fallback settings")
     require(classifier.get("classifier_type", "heuristic") == "heuristic"
             and classifier.get("context_compaction") is False
-            and classifier.get("classification_mode", "user_turn") == "user_turn",
-            "Use the local heuristic per turn with context compaction disabled")
+            and classifier.get("classification_mode", "every_request") == "every_request",
+            "Use the local heuristic on every request with context compaction disabled")
     tiers = classifier.get("tiers")
     require(isinstance(tiers, dict) and set(tiers) == {"SIMPLE", "MEDIUM", "COMPLEX", "REASONING"},
             "Configure all four LiteLLM tiers")
@@ -203,6 +203,8 @@ def route(args, agent):
     require(url.hostname and not (url.username or url.password or url.query or url.fragment)
             and (url.scheme == "https" or url.scheme == "http" and url.hostname in ("localhost", "127.0.0.1", "::1")),
             "Use a gateway URL without embedded credentials (HTTPS or local loopback)")
+    if agent == "claude" and billing == "subscription":
+        require(not url.path, "Claude subscription routing requires the LiteLLM gateway root")
     profile = binding.get("cli_config")
     require(isinstance(profile, str) and profile, "Specify the active worker cli_config file")
     if agent == "codex":
