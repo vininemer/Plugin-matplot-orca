@@ -1,0 +1,795 @@
+<!doctype html>
+<!-- Which layout best explains worker readiness? Compare A, B and C with ?variant=. -->
+<html lang="en">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Worker setup · Orca Workflow prototype</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    :root {
+      color-scheme: light;
+      --paper: #f6f7f1;
+      --card: #fff;
+      --ink: #182d27;
+      --muted: #51655d;
+      --line: #d3dcd3;
+      --forest: #173f34;
+      --mint: #c1f491;
+      --mono: "Cascadia Mono", Consolas, monospace;
+    }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font:
+        16px/1.45 "Segoe UI",
+        Arial,
+        sans-serif;
+    }
+    button,
+    select {
+      font: inherit;
+      color: inherit;
+    }
+    button,
+    select {
+      cursor: pointer;
+    }
+    button {
+      border: 1px solid var(--line);
+      background: var(--card);
+      border-radius: 7px;
+      padding: 9px 14px;
+      font-weight: 600;
+    }
+    button:hover {
+      border-color: var(--forest);
+    }
+    :focus-visible {
+      outline: 3px solid #29886c;
+      outline-offset: 3px;
+    }
+    button.primary {
+      background: var(--forest);
+      color: white;
+      border-color: var(--forest);
+    }
+    button.bright {
+      background: var(--mint);
+      color: #153326;
+      border: 0;
+    }
+    header {
+      border-bottom: 1px solid var(--line);
+      background: white;
+    }
+    .bar,
+    main {
+      max-width: 1120px;
+      margin: auto;
+      padding: 0 32px;
+    }
+    .bar {
+      height: 62px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 14px;
+    }
+    .brand {
+      font-size: 19px;
+      font-weight: 750;
+      letter-spacing: -0.04em;
+    }
+    .mark {
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 9px;
+      background: var(--forest);
+      color: var(--mint);
+      font: 700 23px var(--mono);
+    }
+    .crumb {
+      color: var(--muted);
+    }
+    .tag {
+      margin-left: auto;
+      border: 1px dashed #aab8ac;
+      border-radius: 20px;
+      padding: 3px 10px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    main {
+      padding-top: 32px;
+      padding-bottom: 115px;
+    }
+    .intro,
+    .row,
+    .head,
+    .actions,
+    .samples {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .intro,
+    .head {
+      justify-content: space-between;
+    }
+    .intro {
+      align-items: end;
+      margin-bottom: 24px;
+    }
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+    h1 {
+      font-size: clamp(34px, 5vw, 56px);
+      letter-spacing: -0.06em;
+      line-height: 1.08;
+    }
+    h2 {
+      font-size: 22px;
+      letter-spacing: -0.035em;
+    }
+    h3 {
+      font-size: 17px;
+    }
+    .intro p,
+    .muted {
+      color: var(--muted);
+    }
+    .intro p {
+      margin-top: 8px;
+    }
+    .samples {
+      flex-direction: column;
+      gap: 3px;
+      align-items: start;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .samples select,
+    dialog select {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      padding: 7px;
+    }
+    .gateway {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      background: var(--forest);
+      color: #fff;
+      border-radius: 14px;
+      padding: 19px 24px;
+      margin-bottom: 20px;
+    }
+    .gateway .icon {
+      border: 1px solid #648277;
+      background: #305348;
+      color: var(--mint);
+    }
+    .gateway .url {
+      color: #c4dad0;
+    }
+    .push {
+      margin-left: auto;
+    }
+    .gateway .pill {
+      color: #d8ffc9;
+      background: #30594a;
+    }
+    .icon {
+      display: grid;
+      place-items: center;
+      width: 40px;
+      height: 40px;
+      flex: none;
+      border-radius: 10px;
+      font: bold 17px var(--mono);
+      background: #e5e9fa;
+      color: #504c80;
+    }
+    .icon.claude {
+      background: #f5e5d8;
+      color: #915033;
+    }
+    .url,
+    code {
+      font: 13px/1.5 var(--mono);
+      overflow-wrap: anywhere;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 4px 9px;
+      border-radius: 16px;
+      font-size: 12px;
+      white-space: nowrap;
+      font-weight: 650;
+    }
+    .pill:before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .warn {
+      background: #fff0d7;
+      color: #805412;
+    }
+    .ok {
+      background: #dff2df;
+      color: #236443;
+    }
+    .idle {
+      background: #e8edef;
+      color: #475d68;
+    }
+    .box {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 22px;
+    }
+    .head {
+      margin-bottom: 14px;
+    }
+    .worker {
+      display: grid;
+      grid-template-columns: minmax(135px, 1fr) minmax(160px, 1.35fr) auto;
+      align-items: center;
+      gap: 18px;
+      border-top: 1px solid var(--line);
+      padding: 18px 0;
+    }
+    .worker:last-child {
+      padding-bottom: 0;
+    }
+    .small {
+      font-size: 13px;
+    }
+    .detail {
+      margin-top: 5px;
+    }
+    .actions {
+      flex-wrap: wrap;
+    }
+    .foot {
+      margin-top: 13px;
+      font-size: 13px;
+      color: var(--muted);
+      min-height: 22px;
+    }
+    .map {
+      background: #e7efe8;
+      background-image: radial-gradient(#bdcdbf 1px, transparent 1px);
+      background-size: 16px 16px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 25px;
+      display: grid;
+      grid-template-columns: minmax(170px, 1fr) 70px minmax(150px, 0.8fr);
+      align-items: center;
+    }
+    .nodes {
+      display: grid;
+      gap: 18px;
+    }
+    .node,
+    .hub {
+      display: block;
+      border: 1px solid #bacabd;
+      border-radius: 12px;
+      background: white;
+      padding: 15px;
+      text-align: left;
+    }
+    .node.selected,
+    .steplist .selected {
+      outline: 2px solid var(--forest);
+    }
+    .wire {
+      height: 50%;
+      border-block: 2px solid #81988a;
+      border-right: 2px solid #81988a;
+      margin-right: 50%;
+      position: relative;
+    }
+    .wire:after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 100%;
+      width: calc(100% + 5px);
+      height: 2px;
+      background: #81988a;
+    }
+    .hub {
+      background: var(--forest);
+      color: white;
+    }
+    .mapdetail {
+      margin-top: 15px;
+    }
+    .guided {
+      display: grid;
+      grid-template-columns: minmax(175px, 0.65fr) minmax(0, 1.5fr);
+      gap: 20px;
+    }
+    .steplist {
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }
+    .steplist button {
+      text-align: left;
+      padding: 15px;
+    }
+    .steplist h3 {
+      margin-bottom: 7px;
+    }
+    .large {
+      font-size: 32px;
+      letter-spacing: -0.05em;
+    }
+    dl {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 8px 14px;
+    }
+    dt {
+      color: var(--muted);
+    }
+    dd {
+      margin: 0;
+    }
+    .switcher {
+      position: fixed;
+      z-index: 2;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #1b2b28;
+      color: white;
+      padding: 6px;
+      border-radius: 24px;
+      box-shadow: 0 5px 16px #132b2533;
+      white-space: nowrap;
+      font-size: 14px;
+    }
+    .switcher button {
+      color: #fff;
+      background: #354840;
+      border: 0;
+      border-radius: 100%;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+    }
+    .switcher span {
+      min-width: 155px;
+      text-align: center;
+    }
+    dialog {
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      color: var(--ink);
+      width: min(440px, 92vw);
+      padding: 24px;
+    }
+    dialog::backdrop {
+      background: #10251e70;
+    }
+    dialog select {
+      display: block;
+      width: 100%;
+      margin: 6px 0 20px;
+    }
+    dialog label {
+      display: block;
+      margin-top: 16px;
+    }
+    @media (max-width: 700px) {
+      .bar,
+      main {
+        padding-inline: 16px;
+      }
+      main {
+        padding-top: 20px;
+      }
+      .crumb {
+        display: none;
+      }
+      .intro {
+        align-items: start;
+        flex-direction: column;
+      }
+      .samples {
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+      }
+      .worker {
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+      }
+      .worker .detailcol {
+        grid-row: 2;
+        grid-column: 1/-1;
+      }
+      .box {
+        padding: 16px;
+      }
+      .gateway {
+        padding: 12px;
+        gap: 10px;
+      }
+      .guided {
+        grid-template-columns: 1fr;
+      }
+      .steplist {
+        grid-template-columns: 1fr 1fr;
+      }
+      .map {
+        padding: 12px;
+        grid-template-columns: minmax(0, 1fr) 24px minmax(0, 0.8fr);
+      }
+      .node,
+      .hub {
+        padding: 9px;
+      }
+      .map .icon {
+        display: none;
+      }
+      .actions button {
+        font-size: 14px;
+      }
+      .intro p {
+        font-size: 14px;
+      }
+    }
+  </style>
+  <header>
+    <div class="bar">
+      <span class="mark" aria-hidden="true">≈</span
+      ><span class="brand">Orca Workflow</span
+      ><span class="crumb">/ &nbsp; Workspace settings</span
+      ><span class="tag">Interactive prototype</span>
+    </div>
+  </header>
+  <main>
+    <div class="intro">
+      <div>
+        <h1>Worker setup</h1>
+        <p>Check how Codex and Claude Code connect to LiteLLM.</p>
+      </div>
+      <label class="samples"
+        >Sample state<select id="scenario">
+          <option value="missing">Policies missing</option>
+          <option value="partial">One worker ready</option>
+          <option value="ready">Both workers ready</option>
+          <option value="custom" disabled>Custom setup</option>
+        </select></label
+      >
+    </div>
+    <section id="view" aria-label="Worker configuration"></section>
+    <p class="foot" id="note" role="status"></p>
+  </main>
+  <nav class="switcher" aria-label="Compare prototype layouts">
+    <button aria-label="Previous layout" id="prev">←</button
+    ><span id="variant"></span
+    ><button aria-label="Next layout" id="next">→</button>
+  </nav>
+  <dialog id="editor">
+    <form method="dialog">
+      <h2 id="editorTitle"></h2>
+      <p class="muted">Choose a sample policy for this worker.</p>
+      <label
+        >Routing policy<select id="choice">
+          <option value="missing">No policy</option>
+          <option value="good">Compatible subscription route</option>
+          <option value="wrong">Different gateway</option>
+        </select></label
+      >
+      <div class="actions">
+        <button value="cancel">Cancel</button
+        ><button class="primary" value="apply">Apply sample</button>
+      </div>
+    </form>
+  </dialog>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const workers = [
+      { id: "codex", name: "Codex", role: "Implementation", symbol: "›_" },
+      { id: "claude", name: "Claude Code", role: "Review", symbol: "✳" },
+    ];
+    const layouts = {
+      A: "Worker list",
+      B: "Connection map",
+      C: "Guided setup",
+    };
+    const states = {
+      missing: ["Policy missing", "Choose a routing policy.", "warn"],
+      good: ["Ready", "Subscription route verified.", "ok"],
+      wrong: [
+        "Gateway mismatch",
+        "Policy points to a different gateway.",
+        "warn",
+      ],
+      pending: ["Needs check", "Check the updated policy.", "idle"],
+    };
+    let layout,
+      selected = 0,
+      editing = 0,
+      message = "",
+      policy = [],
+      result = [];
+    const endpoint = "localhost:4000";
+    function scenario(value) {
+      policy =
+        value === "ready"
+          ? ["good", "good"]
+          : value === "partial"
+            ? ["good", "missing"]
+            : ["missing", "missing"];
+      result = [...policy];
+      message = "";
+      render();
+    }
+    function icon(i) {
+      const w = workers[i];
+      return (
+        '<span class="icon ' +
+        w.id +
+        '" aria-hidden="true">' +
+        w.symbol +
+        "</span>"
+      );
+    }
+    function pill(i) {
+      const s = states[result[i]];
+      return '<span class="pill ' + s[2] + '">' + s[0] + "</span>";
+    }
+    function title(i) {
+      return (
+        '<div class="row">' +
+        icon(i) +
+        "<div><h3>" +
+        workers[i].name +
+        '</h3><div class="small muted">' +
+        workers[i].role +
+        "</div></div></div>"
+      );
+    }
+    function btn(label, action, i = "", cls = "") {
+      return (
+        '<button class="' +
+        cls +
+        '" data-action="' +
+        action +
+        '" data-i="' +
+        i +
+        '">' +
+        label +
+        "</button>"
+      );
+    }
+    function ready() {
+      return result.filter((x) => x === "good").length + " of 2 ready";
+    }
+    function controls(i) {
+      return (
+        '<div class="actions">' +
+        btn("Edit sample policy", "edit", i) +
+        btn("Check configuration", "check", i, "primary") +
+        "</div>"
+      );
+    }
+    function details(i) {
+      const alias =
+        policy[i] === "missing" ? "Unassigned" : workers[i].id + "-auto";
+      const address =
+        policy[i] === "wrong" ? "other-gateway.example" : endpoint;
+      return (
+        "<dl><dt>Worker gateway</dt><dd><code>" +
+        (policy[i] === "missing" ? "Unassigned" : address) +
+        "</code></dd><dt>Router alias</dt><dd><code>" +
+        alias +
+        "</code></dd><dt>Billing</dt><dd>" +
+        (policy[i] === "missing" ? "Unassigned" : "Subscription") +
+        "</dd></dl>"
+      );
+    }
+    function gateway() {
+      return (
+        '<div class="gateway"><span class="icon" aria-hidden="true">⇄</span><div><h3>LiteLLM gateway</h3><div class="url">' +
+        endpoint +
+        '</div></div><span class="pill push">Reachable</span></div>'
+      );
+    }
+    function VariantA() {
+      return (
+        gateway() +
+        '<div class="box"><div class="head"><div><h2>Worker profiles</h2><span class="muted small">' +
+        ready() +
+        "</span></div>" +
+        btn("Check both", "both", "", "primary") +
+        "</div>" +
+        workers
+          .map(
+            (w, i) =>
+              '<div class="worker">' +
+              title(i) +
+              '<div class="detailcol">' +
+              pill(i) +
+              '<div class="small muted detail">' +
+              states[result[i]][1] +
+              " " +
+              (policy[i] === "missing"
+                ? ""
+                : "<code>" + w.id + "-auto · " +
+                  (policy[i] === "wrong" ? "other-gateway.example" : endpoint) +
+                  "</code>") +
+              "</div></div>" +
+              btn("Edit policy", "edit", i) +
+              "</div>",
+          )
+          .join("") +
+        "</div>"
+      );
+    }
+    function VariantB() {
+      const i = selected;
+      return (
+        '<div class="map"><div class="nodes">' +
+        workers
+          .map(
+            (w, j) =>
+              '<button class="node ' +
+              (j === i ? "selected" : "") +
+              '" data-action="select" data-i="' +
+              j +
+              '">' +
+              title(j) +
+              pill(j) +
+              "</button>",
+          )
+          .join("") +
+        '</div><div class="wire" aria-hidden="true"></div><div class="hub"><h2>LiteLLM</h2><span class="url">' +
+        endpoint +
+        '</span><p>Reachable</p></div></div><div class="box mapdetail"><div class="head"><h2>' +
+        workers[i].name +
+        " connection</h2>" +
+        pill(i) +
+        "</div>" +
+        details(i) +
+        controls(i) +
+        "</div>"
+      );
+    }
+    function VariantC() {
+      const i = selected;
+      return (
+        '<div class="guided"><div class="steplist">' +
+        workers
+          .map(
+            (w, j) =>
+              '<button class="' +
+              (i === j ? "selected" : "") +
+              '" data-action="select" data-i="' +
+              j +
+              '"><h3>' +
+              w.name +
+              "</h3>" +
+              pill(j) +
+              "</button>",
+          )
+          .join("") +
+        '</div><div class="box"><div class="head">' +
+        icon(i) +
+        '<span class="small muted">' +
+        ready() +
+        '</span></div><h2 class="large">' +
+        workers[i].name +
+        "</h2><p>" +
+        states[result[i]][1] +
+        '</p><div class="small muted">Target gateway · <code>' + endpoint + '</code></div>' +
+        details(i) +
+        controls(i) +
+        '<hr style="border:0;border-top:1px solid var(--line);margin:20px 0 12px">' +
+        btn("Continue to " + workers[1 - i].name, "select", 1 - i) +
+        "</div></div>"
+      );
+    }
+    function render() {
+      $("view").innerHTML = { A: VariantA, B: VariantB, C: VariantC }[layout]();
+      $("variant").textContent = layout + " · " + layouts[layout];
+      $("note").textContent =
+        (message ? message + " · " : "") +
+        "Sample data. Checks run locally in this page.";
+    }
+    function setLayout(key) {
+      layout = Object.hasOwn(layouts, key) ? key : "A";
+      render();
+    }
+    function cycle(delta) {
+      const keys = Object.keys(layouts);
+      const next = keys[(keys.indexOf(layout) + delta + 3) % 3];
+      const url = new URL(location.href);
+      url.searchParams.set("variant", next);
+      history.replaceState(null, "", url);
+      setLayout(next);
+    }
+    $("view").onclick = (e) => {
+      const b = e.target.closest("button[data-action]");
+      if (!b) return;
+      const i = Number(b.dataset.i);
+      switch (b.dataset.action) {
+        case "select":
+          selected = i;
+          message = "";
+          break;
+        case "edit":
+          editing = i;
+          $("editorTitle").textContent = workers[i].name + " policy";
+          $("choice").value = policy[i];
+          $("editor").returnValue = "";
+          $("editor").showModal();
+          return;
+        case "check":
+          result[i] = policy[i];
+          message = workers[i].name + " checked. " + states[result[i]][0] + ".";
+          break;
+        case "both":
+          result = [...policy];
+          message = "Both profiles checked. " + ready() + ".";
+          break;
+      }
+      render();
+    };
+    $("editor").addEventListener("close", () => {
+      if ($("editor").returnValue === "apply") {
+        policy[editing] = $("choice").value;
+        result[editing] = "pending";
+        $("scenario").value = "custom";
+        message = "Sample policy updated for " + workers[editing].name + ".";
+        render();
+      }
+    });
+    $("scenario").onchange = (e) => scenario(e.target.value);
+    $("prev").onclick = () => cycle(-1);
+    $("next").onclick = () => cycle(1);
+    document.addEventListener("keydown", (e) => {
+      if (
+        $("editor").open ||
+        e.target.closest("input,textarea,select,[contenteditable]")
+      )
+        return;
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        e.preventDefault();
+        cycle(e.key === "ArrowRight" ? 1 : -1);
+      }
+    });
+    layout = new URLSearchParams(location.search).get("variant");
+    if (!Object.hasOwn(layouts, layout)) layout = "A";
+    scenario("missing");
+  </script>
+</html>
