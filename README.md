@@ -30,6 +30,10 @@ Reload plugins in the host or resume the same conversation after restarting its 
 
 In the target repository’s Orca conversation, select the **workflow** skill from **orca-workflow** in Codex, or type `/orca-workflow:workflow` in Claude Code. For example, ask “Spec only. Let team leads filter overdue tasks by owner.” Answer the interview in that conversation. You receive the issue link after the plugin reads the published body back from GitHub.
 
+## Build a feature
+
+Ask ?Build the feature in spec #12 and leave one reviewed PR open,? or describe a new feature and request a build. The workflow carries the agreed spec into ticket planning, shows the proposed tickets and blockers in the original conversation, and starts implementation as each dependency passes its checks and lands on the integration branch. Your assigned reviewer receives the combined change, individual ticket results and integration suite. You receive one open PR and decide when to merge. [Multi-ticket workflow](skills/workflow/references/multi-ticket.md)
+
 ## Build an existing ticket
 
 In the same workflow skill, ask "Build #7 and leave the tested and reviewed PR open." The default implementer is Codex and the default reviewer is Claude Code. Set `ORCA_WORKFLOW_IMPLEMENT_CLI` and `ORCA_WORKFLOW_REVIEW_CLI` in the conversation environment to change the defaults (`codex` or `claude`). For a single run you can say "Have Claude Code implement #7 and have Codex review it." The conversation returns the PR with the ticket checks and the review of its exact change. You decide when to merge.

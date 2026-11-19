@@ -55,6 +55,15 @@ print(json.dumps({"number": n, "url": f"https://github.com/acme/tasks/issues/{n}
         self.assertIn("open PR", result["endpoint"])
 
 
+    @unittest.skipUnless(os.environ.get("ORCHESTRA_AUTO_ROOT"), "Set ORCHESTRA_AUTO_ROOT")
+    def test_build_from_an_agreed_spec_starts_at_ticket_planning(self):
+        self.review_fixture()
+        result = self.call("begin-feature", "--repo", "acme/tasks", "--spec", 2)
+        self.assertEqual([item["node"] for item in result["ready"]], ["to-tickets"])
+        self.assertEqual(result["spec"]["body"], "Agreed feature")
+        self.assertEqual(result["route"], "ticket-map")
+        self.assertIn("open PR", result["endpoint"])
+
     def test_step_defaults_and_overrides_reach_the_isolated_orca_worker(self):
         orca = self.fake_command("orca", """import json, sys
 from pathlib import Path
@@ -97,23 +106,51 @@ print(json.dumps({"ok": True, "result": {"dispatchId": "test-dispatch",
         self.git("commit", "-q", "-m", "implementation")
         head = self.git("rev-parse", "HEAD")
         pr = {"url": "https://github.com/acme/tasks/pull/12", "state": "OPEN",
-              "baseRefOid": base, "headRefOid": head, "body": "Summary"}
+              "baseRefOid": base, "headRefOid": head, "body": "Summary", "isDraft": False,
+              "headRefName": "feature/integration", "headRepositoryOwner": {"login": "acme"}}
         self.pr_path = self.directory / "pr.json"
         self.pr_path.write_text(json.dumps(pr), encoding="utf-8")
         self.fake_command("gh", """import json, sys
 from pathlib import Path
 if sys.argv[1:4] == ["pr", "view", "12"]:
     print(Path("pr.json").read_text(encoding="utf-8"))
+elif sys.argv[1:3] == ["api", "--paginate"]:
+    assert sys.argv[-5:] == ["repos/acme/tasks/pulls", "-f", "state=open", "-f",
+                             "head=acme:feature/integration"]
+    matches = json.loads(Path("open.json").read_text())
+    print(json.dumps([[{"html_url": p["url"], "head": {"sha": p["headRefOid"]},
+                        "base": {"sha": p["baseRefOid"]}, "draft": p["isDraft"]} for p in matches]]))
 elif sys.argv[1:3] == ["issue", "view"]:
     n = int(sys.argv[3])
     print(json.dumps({"url": f"https://github.com/acme/tasks/issues/{n}",
-                      "body": {2: "Agreed feature", 7: "Ticket checks"}[n],
+                      "body": {2: "Agreed feature", 7: "Ticket checks", 8: "Dependent ticket"}[n],
                       "number": n, "title": f"Issue {n}", "state": "OPEN"}))
 else: sys.exit("unexpected gh arguments")""")
         self.checks = self.directory / "checks.json"
         self.checks.write_text(json.dumps({"head": head, "checks": [
             {"ticket": 7, "command": "make test", "result": "pass", "evidence": "7 tests passed"}]}))
         return pr
+
+    def test_an_integrated_passing_ticket_releases_dependents_while_issues_remain_open(self):
+        pr = self.review_fixture()
+        graph = self.directory / "tickets.json"
+        graph.write_text('{"7": [], "8": [7], "9": []}')
+        args = ("frontier", "--repo", "acme/tasks", "--map-file", graph,
+                "--head", pr["headRefOid"], "--tests-file", self.checks)
+        report = json.loads(self.checks.read_text())
+        self.checks.write_text('{"checks": []}')
+        self.assertEqual(self.call(*args)["ready"], [7, 9])
+        report["checks"][0]["commit"] = pr["headRefOid"]
+        self.checks.write_text(json.dumps(report))
+        self.assertEqual(self.call(*args), {"integrated": [7], "ready": [8, 9]})
+        for change in [{"result": "fail"}, {"commit": "1" * 40}]:
+            with self.subTest(change=change):
+                altered = dict(report["checks"][0], **change)
+                self.checks.write_text(json.dumps({"checks": [altered]}))
+                self.call(*args, ok=False)
+        graph.write_text('{"7": [8], "8": [7]}')
+        self.checks.write_text('{"checks": []}')
+        self.assertIn("cycle", self.call(*args, ok=False))
 
     def test_reviewer_can_inspect_the_pr_change_spec_and_passing_ticket_evidence(self):
         pr = self.review_fixture()
@@ -130,6 +167,49 @@ else: sys.exit("unexpected gh arguments")""")
         self.checks.write_text(json.dumps(stale))
         self.assertIn("tested head", self.call(*args, ok=False))
 
+
+    def test_combined_review_and_pr_require_every_ticket_and_the_exact_integration_suite(self):
+        pr = self.review_fixture()
+        first = pr["headRefOid"]
+        self.git("commit", "-q", "--allow-empty", "-m", "dependent ticket")
+        pr["headRefOid"] = self.git("rev-parse", "HEAD")
+        self.pr_path.write_text(json.dumps(pr))
+        graph = self.directory / "tickets.json"
+        graph.write_text('{"7": [], "8": [7]}')
+        args = ("--repo", "acme/tasks", "--pr", 12, "--map-file", graph, "--tests-file", self.checks)
+        first_check = dict(json.loads(self.checks.read_text())["checks"][0], commit=first)
+        second = dict(first_check, ticket=8, commit=pr["headRefOid"], evidence="dependent check log")
+        suite = {"command": "make check", "result": "pass", "evidence": "complete suite log"}
+        report = {"checks": [first_check, second], "head": pr["headRefOid"], "integration": [suite]}
+        for bad in [dict(report, checks=[first_check]), dict(report, head=first),
+                    dict(report, integration=[]), dict(report, integration=[dict(suite, result="fail")])]:
+            self.checks.write_text(json.dumps(bad))
+            self.call("review-brief", "--spec", 2, *args, ok=False)
+        self.checks.write_text(json.dumps(report))
+        packet = self.call("review-brief", "--spec", 2, *args)
+        for item in ["Agreed feature", "Ticket checks", "Dependent ticket", first, pr["headRefOid"],
+                     "dependent check log", "complete suite log"]:
+            self.assertIn(item, packet["brief"])
+        review_file = self.directory / "review.json"
+        review_file.write_text(json.dumps({"base": pr["baseRefOid"], "head": pr["headRefOid"],
+            "agent": "claude", "dispatch": "integration-review", "result": "approve",
+            "standards": "Conforms.", "spec": "All criteria covered."}))
+        final = (*args, "--dispatch", "integration-review", "--agent", "claude", "--review-file", review_file)
+        pr["body"] += "\n" + self.call("evidence", *final)["markdown"]
+        self.assertIn(first, pr["body"])
+        self.assertIn("complete suite log", pr["body"])
+        self.pr_path.write_text(json.dumps(pr))
+        open_prs = self.directory / "open.json"
+        open_prs.write_text(json.dumps([pr, dict(pr, url="https://github.com/acme/tasks/pull/13")]))
+        self.assertIn("one open", self.call("verify-pr", *final, ok=False))
+        open_prs.write_text(json.dumps([pr]))
+        self.pr_path.write_text(json.dumps(dict(pr, isDraft=True)))
+        self.assertIn("draft", self.call("verify-pr", *final, ok=False))
+        self.pr_path.write_text(json.dumps(pr))
+        self.assertEqual(self.call("verify-pr", *final)["head"], pr["headRefOid"])
+        pr["headRefOid"] = first
+        self.pr_path.write_text(json.dumps(pr))
+        self.call("verify-pr", *final, ok=False)
 
     def test_only_an_open_pr_with_matching_review_and_evidence_can_be_delivered(self):
         pr = self.review_fixture()
