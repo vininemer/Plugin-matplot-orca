@@ -1,0 +1,958 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>A day in Orca · Workflow prototype</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      :root {
+        --ink: #182e2a;
+        --muted: #526760;
+        --line: #d4dfd7;
+        --green: #174b3b;
+        --paper: #f3f5ef;
+        --mint: #d7f3c4;
+        --mono: Consolas, monospace;
+      }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: var(--paper);
+        font:
+          16px/1.5 "Segoe UI",
+          Arial,
+          sans-serif;
+      }
+      button,
+      select {
+        font: inherit;
+        color: inherit;
+      }
+      button {
+        cursor: pointer;
+        font-weight: 600;
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 9px 14px;
+      }
+      button:hover {
+        border-color: var(--green);
+      }
+      button:focus-visible,
+      summary:focus-visible {
+        outline: 3px solid #278566;
+        outline-offset: 3px;
+      }
+      header {
+        border-bottom: 1px solid var(--line);
+        background: white;
+      }
+      .top,
+      main {
+        max-width: 1200px;
+        margin: auto;
+        padding: 0 28px;
+      }
+      .top,
+      .row,
+      .actions,
+      .spread,
+      .brand {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      .spread {
+        justify-content: space-between;
+      }
+      .top {
+        height: 58px;
+      }
+      .brand {
+        font-size: 18px;
+        font-weight: 700;
+      }
+      .logo {
+        display: grid;
+        place-items: center;
+        background: var(--green);
+        color: #c8efa5;
+        width: 30px;
+        height: 30px;
+        border-radius: 9px;
+        font-size: 22px;
+      }
+      .demo {
+        margin-left: auto;
+        border: 1px dashed #9eafa3;
+        border-radius: 18px;
+        padding: 2px 10px;
+        font-size: 12px;
+      }
+      main {
+        padding-top: 26px;
+        padding-bottom: 44px;
+      }
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+      h1 {
+        font-size: clamp(35px, 4vw, 49px);
+        letter-spacing: -0.055em;
+        line-height: 1.12;
+      }
+      h2 {
+        font-size: 21px;
+        letter-spacing: -0.03em;
+      }
+      h3 {
+        font-size: 16px;
+      }
+      .muted,
+      .subtitle,
+      small {
+        color: var(--muted);
+      }
+      .subtitle {
+        margin-top: 6px;
+      }
+      .scenes {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin: 20px 0;
+      }
+      .scenes button {
+        font-size: 14px;
+        border-radius: 20px;
+        padding: 7px 13px;
+        background: transparent;
+      }
+      .scenes .active {
+        background: var(--green);
+        color: white;
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.65fr) minmax(264px, 1fr);
+        gap: 16px;
+        align-items: start;
+      }
+      .panel {
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 13px;
+        overflow: hidden;
+      }
+      .room {
+        background: var(--green);
+        color: #fff;
+        padding: 17px 20px;
+      }
+      .room small {
+        color: #cee1d4;
+      }
+      .room .stamp {
+        background: #d7f3c4;
+        color: #1f513d;
+      }
+      .stamp {
+        display: inline-block;
+        font-size: 12px;
+        font-weight: 650;
+        padding: 3px 9px;
+        border-radius: 20px;
+        background: #edf2ec;
+      }
+      .messages {
+        max-height: 305px;
+        min-height: 145px;
+        overflow-y: auto;
+        padding: 18px;
+        display: grid;
+        align-content: start;
+        gap: 13px;
+      }
+      .msg {
+        display: grid;
+        grid-template-columns: 30px 1fr;
+        gap: 10px;
+      }
+      .avatar {
+        display: grid;
+        place-items: center;
+        width: 30px;
+        height: 30px;
+        background: #e1efe4;
+        border-radius: 8px;
+        color: #284d3e;
+        font: 600 13px var(--mono);
+      }
+      .me {
+        background: #ebe6fc;
+        color: #514275;
+      }
+      .code {
+        background: #e6e8fe;
+        color: #45447e;
+      }
+      .review {
+        background: #f9e6d7;
+        color: #854b34;
+      }
+      .msg p {
+        font-size: 15px;
+      }
+      .msg strong {
+        font-size: 13px;
+      }
+      .decision {
+        margin: 0 16px 16px;
+        background: #f2f6ef;
+        border: 1px solid #d7e4d6;
+        border-radius: 10px;
+        padding: 16px;
+      }
+      .actions {
+        flex-wrap: wrap;
+        margin-top: 12px;
+      }
+      .primary {
+        background: var(--green);
+        color: white;
+      }
+      .notice {
+        margin-top: 7px;
+        font-size: 13px;
+        color: #725221;
+      }
+      .side {
+        display: grid;
+        gap: 14px;
+      }
+      .pad {
+        padding: 17px 18px;
+      }
+      .worker {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: 9px;
+        align-items: center;
+        border-top: 1px solid var(--line);
+        padding: 10px 0;
+      }
+      .worker:last-child {
+        padding-bottom: 0;
+      }
+      .worker small {
+        display: block;
+      }
+      .label {
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .good {
+        background: #e2f2dd;
+        color: #235137;
+      }
+      .warn {
+        background: #fff0cc;
+        color: #755116;
+      }
+      .link {
+        border: 0;
+        padding: 3px;
+        background: transparent;
+        text-decoration: underline;
+        font-size: 13px;
+      }
+      .status {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 4px 15px;
+        margin: 10px 0 0;
+        font-size: 14px;
+      }
+      .status dt {
+        color: var(--muted);
+      }
+      .status dd {
+        margin: 0;
+      }
+      .walk {
+        margin: 14px 0 0;
+        padding: 14px 18px;
+      }
+      .steps {
+        display: flex;
+        gap: 7px;
+        flex-wrap: wrap;
+        margin-top: 9px;
+      }
+      .steps button {
+        font-size: 12px;
+        padding: 5px 8px;
+      }
+      .steps button:disabled {
+        cursor: default;
+        color: #697770;
+        background: #f6f7f3;
+      }
+      .steps .current {
+        border-color: var(--green);
+      }
+      details {
+        margin-top: 12px;
+      }
+      summary {
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .tools {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+        padding: 10px 0;
+      }
+      .tools button {
+        font-size: 13px;
+      }
+      .tools button:disabled {
+        color: #7c867e;
+        cursor: default;
+      }
+      .small {
+        font-size: 13px;
+      }
+      .end {
+        margin-top: 9px;
+        font: 13px var(--mono);
+        overflow-wrap: anywhere;
+      }
+      dialog {
+        border: 1px solid var(--line);
+        color: var(--ink);
+        border-radius: 12px;
+        padding: 22px;
+        width: min(520px, 92vw);
+      }
+      dialog::backdrop {
+        background: #12241f80;
+      }
+      dialog p {
+        margin: 8px 0;
+      }
+      ul {
+        padding-left: 22px;
+      }
+      li {
+        margin: 5px 0;
+      }
+      @media (max-width: 800px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+        .side {
+          grid-template-columns: repeat(auto-fit, minmax(245px, 1fr));
+        }
+        .top,
+        main {
+          padding-inline: 14px;
+        }
+        .messages {
+          max-height: 235px;
+        }
+        .scenes {
+          gap: 4px;
+        }
+        .room {
+          padding: 12px;
+        }
+        .decision {
+          margin: 0 10px 10px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="top">
+        <div class="brand">
+          <span class="logo" aria-hidden="true">≈</span>Orca Workflow
+        </div>
+        <span class="demo">Simulated workday</span>
+      </div>
+    </header>
+    <main>
+      <h1>A day in Orca</h1>
+      <p class="subtitle">
+        When do you need to answer, and when can the workers carry on? Try a
+        task in a sample billing repository.
+      </p>
+      <nav id="scenes" class="scenes" aria-label="Workday scenarios"></nav>
+      <div class="layout">
+        <section class="panel">
+          <div class="room spread">
+            <div>
+              <small>Billing workspace / Conversation</small>
+              <h2 id="task"></h2>
+            </div>
+            <span class="stamp" id="owner"></span>
+          </div>
+          <div
+            class="messages"
+            id="messages"
+            aria-label="Conversation history"
+          ></div>
+          <section class="decision" aria-live="polite">
+            <h3 id="prompt"></h3>
+            <p class="small muted" id="hint"></p>
+            <div class="actions" id="actions"></div>
+            <p id="notice" class="notice"></p>
+          </section>
+        </section>
+        <aside class="side">
+          <section class="panel pad">
+            <div class="spread">
+              <h2>Worker list</h2>
+              <span id="count" class="stamp"></span>
+            </div>
+            <div id="workers"></div>
+            <div class="spread small" style="margin-top: 14px">
+              <span class="muted">LiteLLM · sample gateway</span
+              ><button class="link" data-action="check">Check both</button>
+            </div>
+          </section>
+          <section class="panel pad">
+            <h2>Work status</h2>
+            <dl class="status" id="status"></dl>
+          </section>
+        </aside>
+      </div>
+      <section class="panel walk">
+        <div class="spread">
+          <h3>Guided walkthrough</h3>
+          <button class="link" data-action="reset">Restart scenario</button>
+        </div>
+        <p id="guide" class="small muted"></p>
+        <div id="steps" class="steps"></div>
+        <details>
+          <summary>Try another action</summary>
+          <div class="tools" id="tools"></div>
+        </details>
+      </section>
+    </main>
+    <dialog id="pr">
+      <div class="spread">
+        <h2>Sample pull request #24</h2>
+        <span class="stamp good">Open</span>
+      </div>
+      <p id="prTitle"></p>
+      <ul id="prProof"></ul>
+      <p class="small muted">
+        This sample stays open. The developer decides whether to merge.
+      </p>
+      <form method="dialog">
+        <button class="primary">Back to workspace</button>
+      </form>
+    </dialog>
+    <script>
+      // Pure workday model. Only user decisions and simulated worker events move a run.
+      const scenarios = {
+        idea: {
+          tab: "Build an idea",
+          title: "Find overdue invoices",
+          request:
+            "Build an overdue filter so I can see which invoices need a reminder.",
+          guide:
+            "Start in the morning with an idea. Answer one question and come back for the combined review.",
+          steps: ["send", "before", "build", "test", "review", "inspect"],
+        },
+        ticket: {
+          tab: "Start with a ticket",
+          title: "Keep the owner filter",
+          request:
+            "Build ticket #17. Keep the selected owner when I clear the date filter.",
+          guide:
+            "The ticket already contains the scope. Follow it straight to implementation.",
+          steps: ["send", "build", "test", "review", "inspect"],
+        },
+        plan: {
+          tab: "Write a spec only",
+          title: "Plan the overdue filter",
+          request:
+            "Write a spec for an overdue invoice filter. I only want the spec today.",
+          guide:
+            "Settle the product rule and take the written spec away for another day.",
+          steps: ["send", "before", "read"],
+        },
+        blocked: {
+          tab: "Reviewer unavailable",
+          title: "Restore the owner filter",
+          request: "Build ticket #17 and leave a reviewed pull request open.",
+          guide:
+            "Watch what happens when the reviewer has no routing policy. Repair the sample profile and resume the same ticket.",
+          steps: [
+            "send",
+            "check",
+            "repair",
+            "check",
+            "build",
+            "test",
+            "review",
+            "inspect",
+          ],
+        },
+      };
+      const labels = {
+        send: "Send request",
+        before: "Only before today",
+        today: "Include today",
+        resume: "Return after lunch",
+        build: "Show implementation update",
+        test: "Show test results",
+        review: "Show review result",
+        inspect: "Inspect open PR",
+        read: "Read the spec",
+        check: "Check both",
+        repair: "Apply sample reviewer policy",
+        changes: "Simulate a review finding",
+        fix: "Show the fix",
+      };
+      const message = (who, text) => ({ who, text });
+      function start(scene) {
+        return {
+          scene,
+          stage: "draft",
+          policy: scene === "blocked" ? "missing" : "ready",
+          checked: false,
+          rule: "",
+          attempt: 1,
+          notes: [
+            message(
+              "Orca",
+              "Open the billing repository, then send the request below.",
+            ),
+          ],
+          visited: [],
+          feedback: "",
+        };
+      }
+      function ticketRun(s) {
+        return ["ticket", "blocked"].includes(s.scene);
+      }
+      function ticketNames(s) {
+        return ticketRun(s)
+          ? "#17 · Preserve owner selection"
+          : "#21 · Find overdue invoices and #22 · Add the filter";
+      }
+      function ruleText(s) {
+        return ticketRun(s)
+          ? "Clearing the date filter preserves the selected owner."
+          : s.rule;
+      }
+      function available(s) {
+        const steps = {
+          draft: ["send"],
+          question: ["before", "today"],
+          blocked: s.policy === "missing" ? ["check", "repair"] : ["check"],
+          implementation: ["resume", "build"],
+          tests: ["test"],
+          review: ["review", "changes"],
+          rework: ["fix"],
+          delivered: ["inspect"],
+          specified: ["read"],
+        };
+        return steps[s.stage] || [];
+      }
+      function advance(s, action) {
+        if (action === "reset") return start(s.scene);
+        if (!available(s).includes(action) && action !== "check")
+          return { ...s, feedback: "Finish the current step first." };
+        if (action === "resume") {
+          const returned = ["build", "test", "review"].reduce(advance, s);
+          return {
+            ...returned,
+            feedback:
+              "After lunch · Your workers finished while you were away. Open the PR to see what changed.",
+          };
+        }
+        const n = {
+          ...s,
+          notes: [...s.notes],
+          visited: [...s.visited, action],
+          feedback: "",
+        };
+        const say = (who, text) => n.notes.push(message(who, text));
+        function beginWork() {
+          n.stage = "implementation";
+          say(
+            "Orca",
+            "Configuration passed for both sample workers. Codex is implementing " +
+              ticketNames(n) +
+              ". You can leave this conversation and return for review.",
+          );
+        }
+        if (action === "send") {
+          say("You", scenarios[s.scene].request);
+          if (!ticketRun(s)) {
+            n.stage = "question";
+            say(
+              "Orca",
+              "Should an unpaid invoice due today appear in the overdue filter?",
+            );
+          } else if (s.policy === "missing") {
+            n.stage = "blocked";
+            say(
+              "Orca",
+              "Ticket #17 is ready. Claude Code has no sample routing policy. Work is paused before dispatch.",
+            );
+          } else beginWork();
+        } else if (action === "before" || action === "today") {
+          n.rule =
+            action === "before"
+              ? "Include unpaid invoices due before today."
+              : "Include unpaid invoices due today or earlier.";
+          say("You", n.rule);
+          say("Orca", "Spec #20 records that rule. Paid invoices stay out.");
+          if (s.scene === "plan") {
+            n.stage = "specified";
+            say(
+              "Orca",
+              "The requested spec is ready. You can return to it when you want to build.",
+            );
+          } else beginWork();
+        } else if (action === "check") {
+          n.checked = true;
+          n.feedback =
+            n.policy === "missing"
+              ? "Codex passed. Claude Code needs a policy."
+              : "Both sample profiles passed their configuration check.";
+          if (s.stage === "blocked" && n.policy !== "missing") {
+            n.policy = "ready";
+            beginWork();
+          } else if (n.policy === "pending") n.policy = "ready";
+        } else if (action === "repair") {
+          n.policy = "pending";
+          n.checked = false;
+          say("You", "Use the sample subscription policy for Claude Code.");
+          n.feedback = "Run Check both to resume.";
+        } else if (action === "build") {
+          n.stage = "tests";
+          say(
+            "Codex",
+            ticketRun(s)
+              ? "Updated the filter controls so clearing the date keeps the owner."
+              : "Implemented the overdue rule and connected it to the invoice list. Both ticket changes are on the integration branch.",
+          );
+        } else if (action === "test") {
+          n.stage = "review";
+          say(
+            "Codex",
+            "The ticket checks passed on revision " +
+              s.attempt +
+              ". " +
+              ruleText(s),
+          );
+          say(
+            "Orca",
+            "Claude Code has the change, the agreed scope and the test results.",
+          );
+        } else if (action === "changes") {
+          n.stage = "rework";
+          say(
+            "Claude Code",
+            "Please cover " +
+              (ticketRun(s)
+                ? "clearing the date twice with the same owner selected."
+                : "an unpaid invoice on the due-date boundary.") +
+              " I sent the finding back to Codex.",
+          );
+        } else if (action === "fix") {
+          n.attempt++;
+          n.stage = "tests";
+          say(
+            "Codex",
+            "Added the missing case. Revision " +
+              n.attempt +
+              " is ready for tests and a fresh review.",
+          );
+        } else if (action === "review") {
+          n.stage = "delivered";
+          say(
+            "Claude Code",
+            "Reviewed revision " +
+              s.attempt +
+              " against the spec and the test results. Approved.",
+          );
+          say(
+            "Orca",
+            "Pull request #24 is open. You have the final merge decision.",
+          );
+        } else if (action === "read") {
+          n.feedback =
+            "Spec #20 · " +
+            s.rule +
+            " Paid invoices stay out. The filter sits in the invoice list.";
+        } else if (action === "inspect") {
+          n.feedback = "Viewing sample PR #24.";
+        }
+        return n;
+      }
+    </script>
+    <script>
+      const byId = (id) => document.getElementById(id);
+      const whoClass = {
+        You: "me",
+        Orca: "",
+        Codex: "code",
+        "Claude Code": "review",
+      };
+      const initial = { You: "Y", Orca: "≈", Codex: "›_", "Claude Code": "✳" };
+      const prompts = {
+        draft: [
+          "Your request",
+          "Send the example below as you would in your Orca conversation.",
+        ],
+        question: [
+          "Orca needs one product decision",
+          "Choose the rule you want to ship.",
+        ],
+        blocked: [
+          "The reviewer needs a routing policy",
+          "The Worker list shows which profile needs attention.",
+        ],
+        implementation: [
+          "Codex is working",
+          "Advance the sample clock to see the next update.",
+        ],
+        tests: [
+          "Checks are running",
+          "Codex verifies the changed behavior before handing it to review.",
+        ],
+        review: [
+          "Claude Code is reviewing",
+          "See the result or try a review that sends the change back.",
+        ],
+        rework: [
+          "Codex is addressing the finding",
+          "The updated revision goes through tests and review again.",
+        ],
+        delivered: [
+          "Your pull request is ready",
+          "Inspect the evidence and decide what you would do next.",
+        ],
+        specified: ["Your spec is ready", "Your spec-only request ends here."],
+      };
+      let state = start("idea");
+      function el(tag, text, cls) {
+        const e = document.createElement(tag);
+        e.textContent = text;
+        if (cls) e.className = cls;
+        return e;
+      }
+      function button(text, action, cls) {
+        const b = el("button", text, cls);
+        b.dataset.action = action;
+        return b;
+      }
+      function fill(id, children) {
+        byId(id).replaceChildren(...children);
+      }
+      function render() {
+        const s = state,
+          sc = scenarios[s.scene],
+          can = available(s);
+        fill(
+          "scenes",
+          Object.entries(scenarios).map(([key, item]) => {
+            const b = el("button", item.tab, key === s.scene ? "active" : "");
+            b.dataset.scene = key;
+            b.setAttribute("aria-pressed", String(key === s.scene));
+            return b;
+          }),
+        );
+        byId("task").textContent = sc.title;
+        byId("owner").textContent =
+          {
+            implementation: "Codex",
+            tests: "Codex",
+            rework: "Codex",
+            review: "Claude Code",
+          }[s.stage] || "Your turn";
+        fill(
+          "messages",
+          s.notes.map((note) => {
+            const m = el("div", "", "msg");
+            const body = el("div", "");
+            body.append(el("strong", note.who), el("p", note.text));
+            m.append(
+              el("span", initial[note.who], "avatar " + whoClass[note.who]),
+              body,
+            );
+            return m;
+          }),
+        );
+        byId("messages").scrollTop = byId("messages").scrollHeight;
+        byId("prompt").textContent = prompts[s.stage][0];
+        byId("hint").textContent =
+          s.stage === "draft" ? "“" + sc.request + "”" : prompts[s.stage][1];
+        fill(
+          "actions",
+          can.map((a, i) => button(labels[a], a, i === 0 ? "primary" : "")),
+        );
+        byId("notice").textContent = s.feedback;
+        byId("count").textContent =
+          (s.policy === "ready" ? "2" : "1") + " of 2 configured";
+        fill(
+          "workers",
+          ["Codex", "Claude Code"].map((who, i) => {
+            const row = el("div", "", "worker"),
+              body = el("div", ""),
+              valid = !i || s.policy === "ready";
+            body.append(
+              el("strong", who),
+              el(
+                "small",
+                i ? "Review · claude-auto" : "Implementation · codex-auto",
+              ),
+            );
+            if (i && s.policy === "missing")
+              body.lastChild.textContent = "Review · no alias assigned";
+            row.append(
+              el("span", initial[who], "avatar " + whoClass[who]),
+              body,
+              el(
+                "span",
+                valid
+                  ? "Configured"
+                  : s.policy === "missing"
+                    ? "Policy missing"
+                    : "Needs check",
+                "stamp " + (valid ? "good" : "warn"),
+              ),
+            );
+            return row;
+          }),
+        );
+        const working = [
+          "implementation",
+          "tests",
+          "review",
+          "rework",
+          "delivered",
+        ].includes(s.stage);
+        const rows = {
+          "Work item":
+            s.stage === "draft"
+              ? "Draft request"
+              : ticketRun(s)
+                ? "#17"
+                : s.rule
+                  ? "Spec #20"
+                  : "Idea",
+          "Agreed scope":
+            ticketRun(s) && s.stage !== "draft"
+              ? ruleText(s)
+              : s.rule || "Awaiting decision",
+          Tickets: working
+            ? ticketNames(s)
+            : s.stage === "blocked"
+              ? "#17 · paused"
+              : "—",
+          Checks: ["review", "delivered", "rework"].includes(s.stage)
+            ? "Passed · revision " + s.attempt
+            : s.stage === "tests"
+              ? "Running · revision " + s.attempt
+              : "—",
+          Delivery:
+            s.stage === "delivered"
+              ? "PR #24 · open"
+              : s.stage === "specified"
+                ? "Published spec"
+                : "Pending",
+        };
+        fill(
+          "status",
+          Object.entries(rows).flatMap(([key, value]) => [
+            el("dt", key),
+            el("dd", value),
+          ]),
+        );
+        byId("guide").textContent = sc.guide;
+        let pos = 0;
+        for (const a of s.visited) {
+          if (
+            a === "repair" &&
+            sc.steps[pos] === "check" &&
+            sc.steps[pos + 1] === "repair"
+          )
+            pos++;
+          const next = sc.steps[pos];
+          if (a === next || (next === "before" && a === "today")) pos++;
+        }
+        fill(
+          "steps",
+          sc.steps.map((a, i) => {
+            const b = button(
+              (i < pos ? "✓ " : i + 1 + " · ") + labels[a],
+              a,
+              i === pos ? "current" : "",
+            );
+            b.disabled = i !== pos || !can.includes(a);
+            return b;
+          }),
+        );
+        fill(
+          "tools",
+          Object.entries(labels).map(([a, label]) => {
+            const b = button(label, a);
+            b.disabled = !can.includes(a) && a !== "check";
+            return b;
+          }),
+        );
+      }
+      document.addEventListener("click", (event) => {
+        const b = event.target.closest("button");
+        if (!b) return;
+        if (b.dataset.scene) {
+          state = start(b.dataset.scene);
+          render();
+          return;
+        }
+        if (!b.dataset.action) return;
+        const a = b.dataset.action;
+        state = advance(state, a);
+        render();
+        if (a === "inspect" && state.stage === "delivered") {
+          byId("prTitle").textContent = scenarios[state.scene].title;
+          fill(
+            "prProof",
+            [
+              ruleText(state),
+              ticketRun(state)
+                ? "Check passed: filter to Ana, clear the date, and only Ana’s invoices remain."
+                : "Check passed: yesterday’s unpaid invoice appears and yesterday’s paid invoice stays hidden.",
+              ticketRun(state)
+                ? "The change is in the invoice filter controls."
+                : "The list and the overdue query were tested together, including your choice for invoices due today.",
+              "Ticket checks passed on revision " + state.attempt + ".",
+              "Claude Code approved the same revision.",
+              "Developer merge decision pending.",
+            ].map((t) => el("li", t)),
+          );
+          byId("pr").showModal();
+        }
+      });
+      render();
+    </script>
+  </body>
+</html>
