@@ -1,0 +1,70 @@
+{
+  "model_list": [
+    {
+      "model_name": "codex-auto",
+      "litellm_params": {
+        "model": "auto_router/complexity_router",
+        "complexity_router_default_model": "gpt-6-luna",
+        "complexity_router_config": {
+          "classifier_type": "heuristic",
+          "classification_mode": "every_request",
+          "context_compaction": false,
+          "tiers": {
+            "SIMPLE": "gpt-6-luna",
+            "MEDIUM": "gpt-6-luna",
+            "COMPLEX": "gpt-6-astra",
+            "REASONING": "gpt-6-astra"
+          }
+        }
+      }
+    },
+    {
+      "model_name": "gpt-6-luna",
+      "litellm_params": {
+        "model": "chatgpt/gpt-6-luna"
+      },
+      "model_info": {
+        "mode": "responses"
+      }
+    },
+    {
+      "model_name": "gpt-6-astra",
+      "litellm_params": {
+        "model": "chatgpt/gpt-6-astra"
+      },
+      "model_info": {
+        "mode": "responses"
+      }
+    },
+    {
+      "model_name": "claude-auto",
+      "litellm_params": {
+        "model": "auto_router/complexity_router",
+        "complexity_router_default_model": "claude-haiku-4-5",
+        "complexity_router_config": {
+          "classifier_type": "heuristic",
+          "classification_mode": "every_request",
+          "context_compaction": false,
+          "tiers": {
+            "SIMPLE": "claude-haiku-4-5",
+            "MEDIUM": "claude-haiku-4-5",
+            "COMPLEX": "claude-sonnet-5",
+            "REASONING": "claude-sonnet-5"
+          }
+        }
+      }
+    },
+    {
+      "model_name": "claude-haiku-4-5",
+      "litellm_params": {
+        "model": "anthropic/claude-haiku-4-5"
+      }
+    },
+    {
+      "model_name": "claude-sonnet-5",
+      "litellm_params": {
+        "model": "anthropic/claude-sonnet-5"
+      }
+    }
+  ]
+}

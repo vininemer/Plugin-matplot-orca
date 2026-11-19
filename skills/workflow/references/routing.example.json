@@ -1,0 +1,26 @@
+{
+  "codex": {
+    "worker_host_verified": false,
+    "gateway_url": "https://gateway.example.com",
+    "gateway_config": "/path/to/deployed/config.yaml",
+    "cli_config": "/path/to/active/.codex/config.toml",
+    "alias": "codex-auto",
+    "billing": "subscription",
+    "enabled_models": [
+      "chatgpt/gpt-6-luna",
+      "chatgpt/gpt-6-astra"
+    ]
+  },
+  "claude": {
+    "worker_host_verified": false,
+    "gateway_url": "https://gateway.example.com",
+    "gateway_config": "/path/to/deployed/config.yaml",
+    "cli_config": "/path/to/active/.claude/settings.json",
+    "alias": "claude-auto",
+    "billing": "subscription",
+    "enabled_models": [
+      "anthropic/claude-haiku-4-5",
+      "anthropic/claude-sonnet-5"
+    ]
+  }
+}

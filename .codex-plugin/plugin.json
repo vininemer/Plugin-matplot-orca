@@ -1,0 +1,9 @@
+{
+  "name": "orca-workflow",
+  "version": "0.1.0",
+  "description": "Guide a repository request through Orchestra Auto in the active Orca conversation.",
+  "author": {
+    "name": "vininemer"
+  },
+  "skills": "./skills/"
+}
