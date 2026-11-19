@@ -30,6 +30,12 @@ Reload plugins in the host or resume the same conversation after restarting its 
 
 In the target repository’s Orca conversation, select the **workflow** skill from **orca-workflow** in Codex, or type `/orca-workflow:workflow` in Claude Code. For example, ask “Spec only. Let team leads filter overdue tasks by owner.” Answer the interview in that conversation. You receive the issue link after the plugin reads the published body back from GitHub.
 
+## Build an existing ticket
+
+In the same workflow skill, ask "Build #7 and leave the tested and reviewed PR open." The default implementer is Codex and the default reviewer is Claude Code. Set `ORCA_WORKFLOW_IMPLEMENT_CLI` and `ORCA_WORKFLOW_REVIEW_CLI` in the conversation environment to change the defaults (`codex` or `claude`). For a single run you can say "Have Claude Code implement #7 and have Codex review it." The conversation returns the PR with the ticket checks and the review of its exact change. You decide when to merge.
+
+Worker supervision uses the local Orca CLI and Orchestra Auto's POSIX tools. On Windows, use WSL for the upstream ledger/preflight scripts with a verified binding to the existing Orca conversation. The workflow includes path and binding checks in the [single-ticket instructions](skills/workflow/references/single-ticket.md).
+
 ## Verify
 
 With the two upstream roots configured, run `python -m unittest discover -s tests -v` in this checkout. The spec-flow tests execute Orchestra Auto’s real design-only route against temporary run storage. They simulate the tracker read-back. A live Orca conversation and permission to publish an issue are needed to verify the interview and actual publication.

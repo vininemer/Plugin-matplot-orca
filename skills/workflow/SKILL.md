@@ -7,6 +7,10 @@ description: Start an Orchestra Auto development workflow from an idea, agreed s
 
 Work in the active repository and return decisions and deliverables to this conversation. Read its AGENTS.md, tracker instructions, glossary and relevant ADRs. Verify the target repository with `gh repo view --json nameWithOwner`. Use its configured GitHub repository explicitly for tracker operations.
 
+## From an actionable issue to an open PR
+
+For a build request naming an existing actionable ticket, start directly with [the single-ticket workflow](references/single-ticket.md). Follow it in this conversation for implementation, assigned review and open PR delivery.
+
 ## From an idea to a published spec
 
 1. Identify the requested endpoint from the developer’s message. For an idea, start the design stage below. If the requested endpoint is unclear, ask the developer here. Retain the original goal and endpoint across replies.
